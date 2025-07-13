@@ -2,6 +2,7 @@
 #define TODOIST_H
 
 #include <time.h>
+#include <sqlite3.h>
 
 #define MAX_TITLE_LEN 256
 #define MAX_DESC_LEN 1024
@@ -25,6 +26,7 @@ typedef struct
 } Task;
 
 
+int add_task(sqlite3 *db, char *title, char *descreption, int due_date);
 
 
 
