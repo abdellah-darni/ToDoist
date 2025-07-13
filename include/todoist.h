@@ -17,18 +17,13 @@ typedef struct
 {
     int id;
     char title[MAX_TITLE_LEN];
-    char descreption[MAX_DESC_LEN];
+    char description[MAX_DESC_LEN];
     TaskStatus status;
     time_t due_date;
     time_t created_at;
     time_t updated_at;
 } Task;
 
-typedef struct 
-{
-    Task *task_list;
-    int count;
-} TaskList;
 
 
 

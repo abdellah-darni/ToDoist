@@ -9,6 +9,7 @@
 
 
 sqlite3* db_open(const char* filename);
+int is_table_exist(sqlite3* db);
 int db_init_schema(sqlite3* db);
 
 #endif
