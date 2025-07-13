@@ -10,13 +10,15 @@ OBJS	:= $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SRCS))
 
 TARGET	:= $(BIN_DIR)/todoist
 
+LIBS	:= -lsqlite3
+
 .PHONY: all run clean 
 
 all: $(TARGET)
 
 # linking
 $(TARGET): $(OBJS) | $(BIN_DIR)
-	$(CC) $(CFLAGS) $^ -o $@
+	$(CC) $(CFLAGS) $^ -o $@ $(LIBS)
 
 # Compiling
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
@@ -33,3 +35,4 @@ run: all
 
 clean:
 	rm -rf $(OBJ_DIR) $(BIN_DIR)
+	rm data/tasks.db
