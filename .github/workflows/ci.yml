@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - 'phase*'
+      - main
+  pull_request:
+    branches:
+      - 'phase*'
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install build-essential
+        run: sudo apt update && sudo apt install -y build-essential
+
+      - name: build
+        run: make all
