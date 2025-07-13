@@ -27,7 +27,9 @@ typedef struct
 
 
 int add_task(sqlite3 *db, char *title, char *descreption, int due_date);
-
+int update_task(sqlite3 *db, int id, char *title, char *descreption, int due_date);
+int delete_task();
+int set_task_status();
 
 
 #endif
