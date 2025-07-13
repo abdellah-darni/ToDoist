@@ -21,6 +21,7 @@ int db_init_schema(sqlite3* db){
     "CREATE TABLE IF NOT EXISTS tasks ("
     "id INTEGER PRIMARY KEY AUTOINCREMENT,"
     "title TEXT NOT NULL,"
+    "description TEXT,"
     "status INTEGER DEFAULT 0,"
     "due_date INEGER,"
     "created_at INTEGER DEFAULT (strftime('%s', 'now')),"
