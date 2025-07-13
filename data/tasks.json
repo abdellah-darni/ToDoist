@@ -1,0 +1,32 @@
+{
+  "task_list": [
+    {
+      "id": 1,
+      "title": "Complete Project Report",
+      "description": "Finish writing the project report by Friday.",
+      "status": "TASK_PENDING",
+      "due_date": 1688736000,
+      "created_at": 1688649600,
+      "updated_at": 1688653200
+    },
+    {
+      "id": 2,
+      "title": "Team Meeting",
+      "description": "Attend the weekly team sync-up meeting.",
+      "status": "TASK_COMPLETED",
+      "due_date": 1688491200,
+      "created_at": 1688404800,
+      "updated_at": 1688491200
+    },
+    {
+      "id": 3,
+      "title": "Submit Timesheet",
+      "description": "Submit the weekly timesheet before the deadline.",
+      "status": "TASK_OVERDUE",
+      "due_date": 1688006400,
+      "created_at": 1687920000,
+      "updated_at": 1688006400
+    }
+  ],
+  "count": 3
+}
