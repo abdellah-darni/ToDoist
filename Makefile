@@ -10,7 +10,7 @@ OBJS	:= $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SRCS))
 
 TARGET	:= $(BIN_DIR)/todoist
 
-LIBS	:= -lsqlite3
+LIBS	:= -lsqlite3 -lncurses
 
 .PHONY: all run clean 
 
