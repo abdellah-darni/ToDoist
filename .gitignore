@@ -1,3 +1,7 @@
 #build artifacts
+build/
+bin/
 
-*.o
+*~
+
+.vscode
