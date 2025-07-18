@@ -21,8 +21,6 @@ int main(){
         printf("the table created\n");
     }
 
-    sqlite3_exec();
-
     return 0;
 }
 
