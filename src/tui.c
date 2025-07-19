@@ -1,70 +1,130 @@
-#include<stdio.h>
+#include <stdio.h>
 #include <time.h>
+#include <string.h>
+#include <stdlib.h>
 
 #include "tui.h"
+#include "database.h"
+
+char *defoult_tasks_tags[] = {
+    "All",
+    "Today",
+    "Tomorrow",
+    "Over-Due",
+    "Completed"
+};
+
+int defoult_tasks_tags_number = 5;
 
 void init_tui(){
     initscr();          
-    cbreak();           
+    raw();           
     noecho();
+    nodelay(stdscr, TRUE);
     refresh();
 
     int height, width;
+    int ch, c;
+    int highlight = 0;
+    int choise = -1;
+
+    curs_set(0);
+
     getmaxyx(stdscr, height, width); 
 
-
-    WINDOW *side_bar = newwin(height - 3, SIDE_BAR_WIDTH, 0, 0 ); 
-    box(side_bar, 0, 0); 
-    mvwprintw(side_bar, 1, 1, "Side Bar"); 
-
-    wrefresh(side_bar); 
-
-    if (2*height < width){
-
-        WINDOW *main_win = newwin(height - 3, (width - SIDE_BAR_WIDTH)/2, 0, SIDE_BAR_WIDTH); 
-        box(main_win, 0, 0); 
-        mvwprintw(main_win, 1, 1, "Main Window Content"); 
-
-        wrefresh(main_win); 
-
-        WINDOW *pomo_win = newwin(height - 3, (width - SIDE_BAR_WIDTH)/2, 0, SIDE_BAR_WIDTH+(width - SIDE_BAR_WIDTH)/2); 
-        box(pomo_win, 0, 0); 
-        mvwprintw(pomo_win, 1, 1, "POMO WIN"); 
-
-        wrefresh(pomo_win); 
-
-    } else{
-
-        WINDOW *main_win = newwin((height - 3)/2, width - SIDE_BAR_WIDTH, 0, SIDE_BAR_WIDTH); 
-        box(main_win, 0, 0); 
-        mvwprintw(main_win, 1, 1, "Main Window Content h: %d \t w: %d",height,width); 
-
-        wrefresh(main_win); 
-
-        WINDOW *pomo_win = newwin((height - 3)/2, width - SIDE_BAR_WIDTH, (height - 3)/2, SIDE_BAR_WIDTH); 
-        box(pomo_win, 0, 0); 
-        mvwprintw(pomo_win, 1, 1, "POMO WIN"); 
-
-        wrefresh(pomo_win); 
-    }
-    
-    WINDOW *down_bar = newwin(3, width, height - 3, 0); 
-    box(down_bar, 0, 0); 
-
-    
-    time_t now = time(NULL);
-    struct tm *tm_info = localtime(&now);
-    char time_str[100];
-    strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", tm_info); 
+    WINDOW *top_bar = create_newwin(3, width, 0, 0);
+    WINDOW *side_bar = create_newwin(height - 3, SIDE_BAR_WIDTH, 3, 0);
+    keypad(side_bar, TRUE);
+    print_menu(side_bar, highlight);
+    // mvwprintw(side_bar, 1, 1, "Side Bar"); 
+    // wrefresh(side_bar); 
 
 
-    mvwprintw(down_bar, 1, 1, "Date and Time: %s", time_str);
-    wrefresh(down_bar); 
+    while((ch = getch())!='q'){
+        update_time_top_bar(top_bar, 1, width);
 
-    getch();   
-
-         
-    // delwin(main_win);   
-    delwin(down_bar);   
+        c = wgetch(side_bar);
+        switch (c)
+        {
+            case KEY_UP:
+                if (highlight == 0){
+                    highlight = defoult_tasks_tags_number-1;
+                }else{
+                    --highlight;
+                }
+                break;
+            case KEY_DOWN:
+                if (highlight == defoult_tasks_tags_number-1){
+                    highlight = 0;
+                }else{
+                    ++highlight;
+                }
+                break;
+            case 10:
+                choise = highlight;
+                break;
+            case 'q':
+                exit(0);
+            default:
+				mvprintw(24, 35, "Charcter pressed is = %3d\nHopefully it can be printed as '%c'", c, c);
+				refresh();
+				break;
+        }
+        print_menu(side_bar, highlight);
+        if(choise != -1){
+            mvprintw(height/2, (width - 15)/2,"You chose : %s",defoult_tasks_tags[choise]);
+        }
+        clrtoeol();
+        refresh();
+    }   
+    refresh();
+          
+    delwin(side_bar);   
     endwin();  
+}
+
+WINDOW *create_newwin(int height, int width, int starty, int startx){
+    WINDOW *local_win;
+
+    local_win = newwin(height, width, starty, startx);
+    box(local_win, 0, 0);
+
+    wrefresh(local_win);
+
+    return local_win;
+}
+
+void destroy_win(WINDOW *win){
+    wborder(win, ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ');
+    wrefresh(win);
+    delwin(win);
+}
+
+void update_time_top_bar(WINDOW *win, int y_pos, int width){
+    time_t now = time(NULL);
+    char time_str[64];
+    strftime(time_str,sizeof(time_str),"%a %d %b %H:%M",localtime(&now));
+    wattron(win,A_ITALIC | A_BOLD);
+    wmove(win,y_pos,(width - strlen(time_str))/2);
+    wprintw(win,"%s",time_str);
+    wattroff(win,A_ITALIC | A_BOLD);
+    wrefresh(win);
+}
+
+void print_menu(WINDOW *menu_win, int highlight){
+    int x, y, i;
+    x = 2;
+    y = 2;
+
+    for (i = 0; i < defoult_tasks_tags_number; i++){
+        if(highlight == i){
+            wattron(menu_win, A_REVERSE);
+            mvwprintw(menu_win, y, x, "%s", defoult_tasks_tags[i]);
+            wattroff(menu_win, A_REVERSE);
+        }else{
+            mvwprintw(menu_win, y, x, "%s", defoult_tasks_tags[i]);
+        }
+        y++;
+    }
+    wrefresh(menu_win);
 }
