@@ -16,27 +16,35 @@ char *tasks_filters_list[] = {
 
 int tasks_filters_count = 5;
 
-WINDOW **focusable_windows = NULL;
-int num_focusable_windows = 0;
+typedef struct _FocusableMenu {
+    WINDOW *win;
+    MENU *menu;
+    int is_focused;
+} FocusableMenu;
+
+FocusableMenu *focusable_menus = NULL;
+int num_focusable_menus = 0;
 int current_focus_idx = 0;
 
 void init_tui(char **list, int count){
 
     ITEM  **filter_items;
-    WINDOW *filters_bar_win;
     MENU *filter_menu;
-
+    WINDOW *filters_bar_win;
+    
     ITEM **tags_items;
+    MENU *tags_menu;
+    WINDOW *tags_bar_win;
 
     initscr();          
-    // raw();
     cbreak();
     noecho();
+    keypad(stdscr, TRUE);
     nodelay(stdscr, TRUE);
     refresh();
 
     int height, width;
-    int ch, c;
+    int ch ,c;
     int highlight = 0;
     int choise = -1;
 
@@ -45,10 +53,12 @@ void init_tui(char **list, int count){
 
     WINDOW *top_bar = create_newwin(3, width, 0, 0);
 
+    // filer menu
     filter_items = (ITEM **)calloc(tasks_filters_count+1, sizeof(ITEM *));
     for (int i = 0; i < tasks_filters_count ; i++){
         filter_items[i] = new_item(tasks_filters_list[i],NULL);
     }
+
     filter_items[tasks_filters_count] = NULL;
 
     filter_menu = new_menu((ITEM **)filter_items);
@@ -64,22 +74,19 @@ void init_tui(char **list, int count){
 	mvwhline(filters_bar_win, 2, 1, ACS_HLINE, SIDE_BAR_WIDTH-2);
 	mvwaddch(filters_bar_win, 2, SIDE_BAR_WIDTH-1, ACS_RTEE);
 
-    refresh();
     post_menu(filter_menu);
     wrefresh(filters_bar_win);
 
-    mvprintw(height/2, width/2, "the count is : %d", count);
-    refresh();
-
-
+    // tags menu
     tags_items = (ITEM **)calloc(count+1, sizeof(ITEM *));
     for (int i = 0; i < count; i++){
         tags_items[i] = new_item(list[i], NULL);
     }
+
     tags_items[count] = NULL;
 
-    MENU *tags_menu = new_menu((ITEM **)tags_items);
-    WINDOW *tags_bar_win = create_newwin(height - 13, SIDE_BAR_WIDTH, 13, 0);
+    tags_menu = new_menu((ITEM **)tags_items);
+    tags_bar_win = create_newwin(height - 13, SIDE_BAR_WIDTH, 13, 0);
     keypad(tags_bar_win, TRUE);
     set_menu_win(tags_menu, tags_bar_win);
     set_menu_sub(tags_menu, derwin(tags_bar_win, 6, SIDE_BAR_WIDTH-2, 4,2));
@@ -91,44 +98,57 @@ void init_tui(char **list, int count){
 	mvwhline(tags_bar_win, 2, 1, ACS_HLINE, SIDE_BAR_WIDTH-2);
 	mvwaddch(tags_bar_win, 2, SIDE_BAR_WIDTH-1, ACS_RTEE);
 
-    refresh();
     post_menu(tags_menu);
     wrefresh(tags_bar_win);
 
 
+    add_focusable_window(filters_bar_win, filter_menu);
+    add_focusable_window(tags_bar_win, tags_menu);
 
-    // WINDOW *tags_bar_win = create_newwin(height - 13, SIDE_BAR_WIDTH, 13, 0);
-    // print_menu(tags_bar_win, -1, list, *count);
+    focusable_menus[0].is_focused = 1;
+    update_window_focus();
 
-    // add_focusable_window(filters_bar_win);
-    // add_focusable_window(tags_bar_win);
-
-    // if(num_focusable_windows > 0){
-    //     wattron(focusable_windows[current_focus_idx], A_REVERSE);
-    //     box(focusable_windows[current_focus_idx],0,0);
-    //     wrefresh(focusable_windows[current_focus_idx]);
-    //     wmove(focusable_windows[current_focus_idx], 1,1);
-    // }
 
     while((ch = getch())!='q'){
         update_time_top_bar(top_bar, 1, width);
 
-        c = wgetch(filters_bar_win);
+        // switch (ch)
+        // {
+        //     case 9:
+        //         switch_focus();
+        //         continue;
+        // }
+
+        if (ch == 9){ // Tab key
+            mvprintw(height-2, 0, "Tab pressed! Current focus: %d", current_focus_idx);
+            clrtoeol();
+            refresh();
+            switch_focus();
+            continue;
+        }
+
+        FocusableMenu *current_menu = &focusable_menus[current_focus_idx];
+        c = wgetch(current_menu -> win);
+
         switch (c)
         {
+            case 9:
+                switch_focus();
+                continue;
+                
             case KEY_UP:
-                menu_driver(filter_menu, REQ_UP_ITEM);
+                menu_driver(current_menu -> menu, REQ_UP_ITEM);
                 break;
 
             case KEY_DOWN:
-                menu_driver(filter_menu, REQ_DOWN_ITEM);
+                menu_driver(current_menu -> menu, REQ_DOWN_ITEM);
                 break;
 
             case 10:
                 move(24, 30);
 				clrtoeol();
-				mvprintw(20, 30, "Item selected is : %s", item_name(current_item(filter_menu)));
-				pos_menu_cursor(filter_menu);
+				mvprintw(20, 30, "Item selected is : %s", item_name(current_item(current_menu -> menu)));
+				pos_menu_cursor(current_menu -> menu);
 				break;
             case 'q':
                 exit(0);
@@ -145,9 +165,12 @@ void init_tui(char **list, int count){
     }   
     refresh();
 
-    clrtoeol();
-    delwin(filters_bar_win);   
-    endwin();  
+    cleanup_menus();
+    destroy_win(top_bar);
+    destroy_win(filters_bar_win);   
+    destroy_win(tags_bar_win);
+    endwin();
+    
 }
 
 WINDOW *create_newwin(int height, int width, int starty, int startx){
@@ -196,21 +219,63 @@ void print_menu(WINDOW *menu_win, int highlight, char **list, int count){
     wrefresh(menu_win);
 }
 
-void add_focusable_window(WINDOW *win){
-    num_focusable_windows++;
-    focusable_windows = (WINDOW **)realloc(focusable_windows, num_focusable_windows * sizeof(WINDOW *));
-    if (focusable_windows == NULL){
+void add_focusable_window(WINDOW *win, MENU *menu){
+    num_focusable_menus++;
+    focusable_menus = (FocusableMenu *)realloc(focusable_menus, num_focusable_menus * sizeof(FocusableMenu));
+    if (focusable_menus == NULL){
         endwin();
         exit(EXIT_FAILURE);
     }
-    focusable_windows[num_focusable_windows - 1] = win;
+    focusable_menus[num_focusable_menus - 1].win = win;
+    focusable_menus[num_focusable_menus - 1].menu = menu;
+    focusable_menus[num_focusable_menus - 1].is_focused = 0;
 }
 
-// void update_window_focus(int direction){
-//     if (num_focusable_windows == 0) return;
+void update_window_focus(){
+    for(int i = 0; i < num_focusable_menus; i++){
+        FocusableMenu *menu_item = &focusable_menus[i];
 
+        if(menu_item -> is_focused){
+            set_menu_fore(menu_item -> menu, A_REVERSE);
+            set_menu_back(menu_item -> menu, A_NORMAL);
+            
+            wattron(menu_item -> win, A_BOLD);
+            box(menu_item -> win, 0, 0);
+            wattroff(menu_item -> win, A_BOLD);
+        }else{
+            set_menu_fore(menu_item -> menu, A_DIM);
+            set_menu_back(menu_item -> menu, A_DIM);
 
-// }
+            box(menu_item -> win, 0, 0);
+        }
+        wrefresh(menu_item -> win);
+    }
+    refresh();
+}
+
+void switch_focus(){
+    if (num_focusable_menus <= 1) return;
+
+    focusable_menus[current_focus_idx].is_focused = 0;
+    current_focus_idx = (current_focus_idx + 1) % num_focusable_menus;
+    focusable_menus[current_focus_idx].is_focused = 1;
+
+    update_window_focus();
+}
+
+void cleanup_menus(){
+    if(focusable_menus != NULL){
+        for (int i = 0; i < num_focusable_menus; i++){
+            unpost_menu(focusable_menus[i].menu);
+            free_menu(focusable_menus[i].menu);
+        }
+        free(focusable_menus);
+        focusable_menus = NULL;
+    }
+    num_focusable_menus = 0;
+    current_focus_idx = 0;
+}
+
 
 void print_in_middle(WINDOW *win, int starty, int startx, int width, char *string){
 
