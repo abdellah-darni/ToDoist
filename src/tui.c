@@ -6,7 +6,7 @@
 #include "tui.h"
 #include "database.h"
 
-char *defoult_tasks_tags[] = {
+char *tasks_filters_list[] = {
     "All",
     "Today",
     "Tomorrow",
@@ -14,11 +14,23 @@ char *defoult_tasks_tags[] = {
     "Completed"
 };
 
-int defoult_tasks_tags_number = 5;
+int tasks_filters_count = 5;
 
-void init_tui(){
+WINDOW **focusable_windows = NULL;
+int num_focusable_windows = 0;
+int current_focus_idx = 0;
+
+void init_tui(char **list, int count){
+
+    ITEM  **filter_items;
+    WINDOW *filters_bar_win;
+    MENU *filter_menu;
+
+    ITEM **tags_items;
+
     initscr();          
-    raw();           
+    // raw();
+    cbreak();
     noecho();
     nodelay(stdscr, TRUE);
     refresh();
@@ -29,40 +41,95 @@ void init_tui(){
     int choise = -1;
 
     curs_set(0);
-
     getmaxyx(stdscr, height, width); 
 
     WINDOW *top_bar = create_newwin(3, width, 0, 0);
-    WINDOW *side_bar = create_newwin(height - 3, SIDE_BAR_WIDTH, 3, 0);
-    keypad(side_bar, TRUE);
-    print_menu(side_bar, highlight);
-    // mvwprintw(side_bar, 1, 1, "Side Bar"); 
-    // wrefresh(side_bar); 
 
+    filter_items = (ITEM **)calloc(tasks_filters_count+1, sizeof(ITEM *));
+    for (int i = 0; i < tasks_filters_count ; i++){
+        filter_items[i] = new_item(tasks_filters_list[i],NULL);
+    }
+    filter_items[tasks_filters_count] = NULL;
+
+    filter_menu = new_menu((ITEM **)filter_items);
+    filters_bar_win = create_newwin(10, SIDE_BAR_WIDTH, 3, 0);
+    keypad(filters_bar_win, TRUE);
+    set_menu_win(filter_menu, filters_bar_win);
+    set_menu_sub(filter_menu, derwin(filters_bar_win, 6, SIDE_BAR_WIDTH -2 , 4, 2));
+    set_menu_mark(filter_menu, " * ");
+    box(filters_bar_win, 0, 0);
+
+    print_in_middle(filters_bar_win, 1, 0, SIDE_BAR_WIDTH, "Filters");
+    mvwaddch(filters_bar_win, 2, 0, ACS_LTEE);
+	mvwhline(filters_bar_win, 2, 1, ACS_HLINE, SIDE_BAR_WIDTH-2);
+	mvwaddch(filters_bar_win, 2, SIDE_BAR_WIDTH-1, ACS_RTEE);
+
+    refresh();
+    post_menu(filter_menu);
+    wrefresh(filters_bar_win);
+
+    mvprintw(height/2, width/2, "the count is : %d", count);
+    refresh();
+
+
+    tags_items = (ITEM **)calloc(count+1, sizeof(ITEM *));
+    for (int i = 0; i < count; i++){
+        tags_items[i] = new_item(list[i], NULL);
+    }
+    tags_items[count] = NULL;
+
+    MENU *tags_menu = new_menu((ITEM **)tags_items);
+    WINDOW *tags_bar_win = create_newwin(height - 13, SIDE_BAR_WIDTH, 13, 0);
+    keypad(tags_bar_win, TRUE);
+    set_menu_win(tags_menu, tags_bar_win);
+    set_menu_sub(tags_menu, derwin(tags_bar_win, 6, SIDE_BAR_WIDTH-2, 4,2));
+    set_menu_mark(tags_menu, " * ");
+    box(tags_bar_win,0,0);
+
+    print_in_middle(tags_bar_win, 1, 0, SIDE_BAR_WIDTH, "Tags");
+    mvwaddch(tags_bar_win, 2, 0, ACS_LTEE);
+	mvwhline(tags_bar_win, 2, 1, ACS_HLINE, SIDE_BAR_WIDTH-2);
+	mvwaddch(tags_bar_win, 2, SIDE_BAR_WIDTH-1, ACS_RTEE);
+
+    refresh();
+    post_menu(tags_menu);
+    wrefresh(tags_bar_win);
+
+
+
+    // WINDOW *tags_bar_win = create_newwin(height - 13, SIDE_BAR_WIDTH, 13, 0);
+    // print_menu(tags_bar_win, -1, list, *count);
+
+    // add_focusable_window(filters_bar_win);
+    // add_focusable_window(tags_bar_win);
+
+    // if(num_focusable_windows > 0){
+    //     wattron(focusable_windows[current_focus_idx], A_REVERSE);
+    //     box(focusable_windows[current_focus_idx],0,0);
+    //     wrefresh(focusable_windows[current_focus_idx]);
+    //     wmove(focusable_windows[current_focus_idx], 1,1);
+    // }
 
     while((ch = getch())!='q'){
         update_time_top_bar(top_bar, 1, width);
 
-        c = wgetch(side_bar);
+        c = wgetch(filters_bar_win);
         switch (c)
         {
             case KEY_UP:
-                if (highlight == 0){
-                    highlight = defoult_tasks_tags_number-1;
-                }else{
-                    --highlight;
-                }
+                menu_driver(filter_menu, REQ_UP_ITEM);
                 break;
+
             case KEY_DOWN:
-                if (highlight == defoult_tasks_tags_number-1){
-                    highlight = 0;
-                }else{
-                    ++highlight;
-                }
+                menu_driver(filter_menu, REQ_DOWN_ITEM);
                 break;
+
             case 10:
-                choise = highlight;
-                break;
+                move(24, 30);
+				clrtoeol();
+				mvprintw(20, 30, "Item selected is : %s", item_name(current_item(filter_menu)));
+				pos_menu_cursor(filter_menu);
+				break;
             case 'q':
                 exit(0);
             default:
@@ -70,16 +137,16 @@ void init_tui(){
 				refresh();
 				break;
         }
-        print_menu(side_bar, highlight);
         if(choise != -1){
-            mvprintw(height/2, (width - 15)/2,"You chose : %s",defoult_tasks_tags[choise]);
+            mvprintw(height/2, (width - 15)/2,"You chose : %s",tasks_filters_list[choise]);
         }
         clrtoeol();
         refresh();
     }   
     refresh();
-          
-    delwin(side_bar);   
+
+    clrtoeol();
+    delwin(filters_bar_win);   
     endwin();  
 }
 
@@ -111,20 +178,58 @@ void update_time_top_bar(WINDOW *win, int y_pos, int width){
     wrefresh(win);
 }
 
-void print_menu(WINDOW *menu_win, int highlight){
+void print_menu(WINDOW *menu_win, int highlight, char **list, int count){
     int x, y, i;
     x = 2;
     y = 2;
 
-    for (i = 0; i < defoult_tasks_tags_number; i++){
+    for (i = 0; i < count; i++){
         if(highlight == i){
             wattron(menu_win, A_REVERSE);
-            mvwprintw(menu_win, y, x, "%s", defoult_tasks_tags[i]);
+            mvwprintw(menu_win, y, x, "%s", list[i]);
             wattroff(menu_win, A_REVERSE);
         }else{
-            mvwprintw(menu_win, y, x, "%s", defoult_tasks_tags[i]);
+            mvwprintw(menu_win, y, x, "%s", list[i]);
         }
         y++;
     }
     wrefresh(menu_win);
+}
+
+void add_focusable_window(WINDOW *win){
+    num_focusable_windows++;
+    focusable_windows = (WINDOW **)realloc(focusable_windows, num_focusable_windows * sizeof(WINDOW *));
+    if (focusable_windows == NULL){
+        endwin();
+        exit(EXIT_FAILURE);
+    }
+    focusable_windows[num_focusable_windows - 1] = win;
+}
+
+// void update_window_focus(int direction){
+//     if (num_focusable_windows == 0) return;
+
+
+// }
+
+void print_in_middle(WINDOW *win, int starty, int startx, int width, char *string){
+
+    int length, x, y;
+	float temp;
+
+	if(win == NULL)
+		win = stdscr;
+	getyx(win, y, x);
+	if(startx != 0)
+		x = startx;
+	if(starty != 0)
+		y = starty;
+	if(width == 0)
+		width = 80;
+
+	length = strlen(string);
+	temp = (width - length)/ 2;
+	x = startx + (int)temp;
+	mvwprintw(win, y, x, "%s", string);
+	refresh();
 }
