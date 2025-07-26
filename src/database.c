@@ -137,7 +137,7 @@ int load_tasks(sqlite3 *db, Tasks *tasks){
     if ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
         db_tasks_count = (int)sqlite3_column_int(stmt, 0);
     }
-    printf("db count row : %d\n", db_tasks_count);
+    
     sqlite3_finalize(stmt);
     stmt = NULL;
 
