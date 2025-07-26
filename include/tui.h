@@ -6,7 +6,7 @@
 
 #define SIDE_BAR_WIDTH 20
 
-void init_tui(char **list, int count);
+void init_tui(sqlite3 *db);
 WINDOW *create_newwin(int height, int width, int starty, int startx);
 void destroy_win(WINDOW *win);
 void update_time_top_bar(WINDOW *win, int y_pos, int x_pos);

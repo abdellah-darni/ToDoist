@@ -2,6 +2,7 @@
 #include <time.h>
 #include <string.h>
 #include <stdlib.h>
+#include <sqlite3.h>
 
 #include "tui.h"
 #include "database.h"
@@ -26,7 +27,7 @@ FocusableMenu *focusable_menus = NULL;
 int num_focusable_menus = 0;
 int current_focus_idx = 0;
 
-void init_tui(char **list, int count){
+void init_tui(sqlite3 *db){
 
     ITEM  **filter_items;
     MENU *filter_menu;
@@ -35,6 +36,8 @@ void init_tui(char **list, int count){
     ITEM **tags_items;
     MENU *tags_menu;
     WINDOW *tags_bar_win;
+    int tags_count;
+    char **tags_list = NULL;
 
     initscr();          
     cbreak();
@@ -45,8 +48,8 @@ void init_tui(char **list, int count){
 
     int height, width;
     int ch ,c;
-    int highlight = 0;
     int choise = -1;
+
 
     curs_set(0);
     getmaxyx(stdscr, height, width); 
@@ -78,22 +81,24 @@ void init_tui(char **list, int count){
     wrefresh(filters_bar_win);
 
     // tags menu
-    tags_items = (ITEM **)calloc(count+1, sizeof(ITEM *));
-    for (int i = 0; i < count; i++){
-        tags_items[i] = new_item(list[i], NULL);
+    load_tags(db, &tags_list, &tags_count);
+
+    tags_items = (ITEM **)calloc(tags_count+1, sizeof(ITEM *));
+    for (int i = 0; i < tags_count; i++){
+        tags_items[i] = new_item(tags_list[i], NULL);
     }
 
-    tags_items[count] = NULL;
+    tags_items[tags_count] = NULL;
 
     tags_menu = new_menu((ITEM **)tags_items);
-    tags_bar_win = create_newwin(height - 13, SIDE_BAR_WIDTH, 13, 0);
+    tags_bar_win = create_newwin(height - 16, SIDE_BAR_WIDTH, 13, 0);
     keypad(tags_bar_win, TRUE);
     set_menu_win(tags_menu, tags_bar_win);
-    set_menu_sub(tags_menu, derwin(tags_bar_win, 6, SIDE_BAR_WIDTH-2, 4,2));
+    set_menu_sub(tags_menu, derwin(tags_bar_win, 6, SIDE_BAR_WIDTH-4, 4,2));
     set_menu_mark(tags_menu, " * ");
     box(tags_bar_win,0,0);
 
-    print_in_middle(tags_bar_win, 1, 0, SIDE_BAR_WIDTH, "Tags");
+    print_in_middle(tags_bar_win, 1, 0, SIDE_BAR_WIDTH-1, "Tags");
     mvwaddch(tags_bar_win, 2, 0, ACS_LTEE);
 	mvwhline(tags_bar_win, 2, 1, ACS_HLINE, SIDE_BAR_WIDTH-2);
 	mvwaddch(tags_bar_win, 2, SIDE_BAR_WIDTH-1, ACS_RTEE);
@@ -112,17 +117,7 @@ void init_tui(char **list, int count){
     while((ch = getch())!='q'){
         update_time_top_bar(top_bar, 1, width);
 
-        // switch (ch)
-        // {
-        //     case 9:
-        //         switch_focus();
-        //         continue;
-        // }
-
-        if (ch == 9){ // Tab key
-            mvprintw(height-2, 0, "Tab pressed! Current focus: %d", current_focus_idx);
-            clrtoeol();
-            refresh();
+        if (ch == 9){
             switch_focus();
             continue;
         }
@@ -135,7 +130,7 @@ void init_tui(char **list, int count){
             case 9:
                 switch_focus();
                 continue;
-                
+
             case KEY_UP:
                 menu_driver(current_menu -> menu, REQ_UP_ITEM);
                 break;
@@ -186,6 +181,7 @@ WINDOW *create_newwin(int height, int width, int starty, int startx){
 
 void destroy_win(WINDOW *win){
     wborder(win, ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ');
+    clrtoeol();
     wrefresh(win);
     delwin(win);
 }
@@ -196,6 +192,7 @@ void update_time_top_bar(WINDOW *win, int y_pos, int width){
     strftime(time_str,sizeof(time_str),"%a %d %b %H:%M",localtime(&now));
     wattron(win,A_ITALIC | A_BOLD);
     wmove(win,y_pos,(width - strlen(time_str))/2);
+    clrtoeol();
     wprintw(win,"%s",time_str);
     wattroff(win,A_ITALIC | A_BOLD);
     wrefresh(win);
@@ -238,6 +235,7 @@ void update_window_focus(){
         if(menu_item -> is_focused){
             set_menu_fore(menu_item -> menu, A_REVERSE);
             set_menu_back(menu_item -> menu, A_NORMAL);
+            set_menu_mark(menu_item -> menu, " * ");
             
             wattron(menu_item -> win, A_BOLD);
             box(menu_item -> win, 0, 0);
@@ -245,6 +243,7 @@ void update_window_focus(){
         }else{
             set_menu_fore(menu_item -> menu, A_DIM);
             set_menu_back(menu_item -> menu, A_DIM);
+            set_menu_mark(menu_item -> menu, "   ");
 
             box(menu_item -> win, 0, 0);
         }
