@@ -39,6 +39,13 @@ void init_tui(sqlite3 *db){
     int tags_count;
     char **tags_list = NULL;
 
+    ITEM **tasks_items;
+    MENU *tasks_menu;
+    WINDOW *tasks_win;
+    Tasks all_tasks = {.task_count = 0, .task_list = NULL};
+
+    WINDOW *task_descreption;
+
     initscr();          
     cbreak();
     noecho();
@@ -106,9 +113,37 @@ void init_tui(sqlite3 *db){
     post_menu(tags_menu);
     wrefresh(tags_bar_win);
 
+    // tasks win/menu
+    load_tasks(db, &all_tasks);
+
+    tasks_items = (ITEM **)calloc(all_tasks.task_count + 1, sizeof(ITEM *));
+    for(int i = 0; i < all_tasks.task_count; i++){
+        tasks_items[i] = new_item(all_tasks.task_list[i].title, all_tasks.task_list[i].desc);
+        set_item_userptr(tasks_items[i], &all_tasks.task_list[i]);
+    }
+
+    tasks_items[all_tasks.task_count] = NULL;
+
+    tasks_menu = new_menu((ITEM **)tasks_items);
+    tasks_win = create_newwin(height - 6, (width-SIDE_BAR_WIDTH)/2, 3, SIDE_BAR_WIDTH);
+    keypad(tasks_win, TRUE);
+    set_menu_win(tasks_menu, tasks_win);
+    set_menu_sub(tasks_menu, derwin(tasks_win, 6, ((width-SIDE_BAR_WIDTH)/2)-4, 4,2));
+    set_menu_mark(tasks_menu, " * ");
+    box(tasks_win, 0, 0);
+
+    print_in_middle(tasks_win, 1,0,(width-SIDE_BAR_WIDTH)/2, "TASKS");
+    mvwaddch(tasks_win, 2, 0, ACS_LTEE);
+	mvwhline(tasks_win, 2, 1, ACS_HLINE, ((width-SIDE_BAR_WIDTH)/2)-2);
+	mvwaddch(tasks_win, 2, ((width-SIDE_BAR_WIDTH)/2)-1, ACS_RTEE);
+
+    post_menu(tasks_menu);
+    wrefresh(tasks_win);
+
 
     add_focusable_window(filters_bar_win, filter_menu);
     add_focusable_window(tags_bar_win, tags_menu);
+    add_focusable_window(tasks_win, tasks_menu);
 
     focusable_menus[0].is_focused = 1;
     update_window_focus();
@@ -140,20 +175,16 @@ void init_tui(sqlite3 *db){
                 break;
 
             case 10:
-                move(24, 30);
 				clrtoeol();
-				mvprintw(20, 30, "Item selected is : %s", item_name(current_item(current_menu -> menu)));
+				mvprintw(height-3, 1, "Item selected is : %s", item_name(current_item(current_menu -> menu)));
 				pos_menu_cursor(current_menu -> menu);
 				break;
             case 'q':
                 exit(0);
             default:
-				mvprintw(24, 35, "Charcter pressed is = %3d\nHopefully it can be printed as '%c'", c, c);
+				mvprintw(height-2, 1, "Charcter pressed is = %3d\nHopefully it can be printed as '%c'", c, c);
 				refresh();
 				break;
-        }
-        if(choise != -1){
-            mvprintw(height/2, (width - 15)/2,"You chose : %s",tasks_filters_list[choise]);
         }
         clrtoeol();
         refresh();
