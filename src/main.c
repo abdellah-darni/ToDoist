@@ -6,7 +6,7 @@
 
 
 
-#include "todoist.h"
+// #include "todoist.h"
 #include "database.h"
 #include "tui.h"
 
@@ -16,28 +16,22 @@ int main(){
 
     sqlite3 *db = db_open(DEFAULT_DB_PATH);
 
+    Tasks all_tasks;
+    all_tasks.task_count = 0;
+    all_tasks.task_list = NULL;
+
     if (!db_init_schema(db)){
         printf("the table created\n");
     }
 
-    int tags_count;
-    char **tags_list = NULL;
+    load_tasks(db, &all_tasks);
 
-    int state = load_tags(db, &tags_list, &tags_count);
-    printf("state : %d\n", state);
-    if (state != 0){
-        printf("shitt !!");
-        return 1;
+    for(int i = 0; i < all_tasks.task_count; i++){
+        printf("id: %d\ttitle: %s\tdesc: %s\ttags: %s\n",all_tasks.task_list[i].id, all_tasks.task_list[i].title, all_tasks.task_list[i].desc, all_tasks.task_list[i].tag);
     }
 
-    for (int j = 0; j < tags_count; j++){
-        printf("- %s\n",tags_list[j]);
-    }
 
-    printf("the count : %d", tags_count);
-
-
-    init_tui(tags_list, tags_count);
+    init_tui(db);
    
 
     return 0;
