@@ -17,6 +17,13 @@ char *tasks_filters_list[] = {
 
 int tasks_filters_count = 5;
 
+typedef struct _TasksPane{
+    WINDOW *win;
+    MENU *menu;
+    ITEM **items;
+    Tasks tasks_struct;
+} TasksPane;
+
 typedef struct _FocusableMenu {
     WINDOW *win;
     MENU *menu;
@@ -26,6 +33,8 @@ typedef struct _FocusableMenu {
 FocusableMenu *focusable_menus = NULL;
 int num_focusable_menus = 0;
 int current_focus_idx = 0;
+
+int src_width, src_height;
 
 void init_tui(sqlite3 *db){
 
@@ -39,12 +48,15 @@ void init_tui(sqlite3 *db){
     int tags_count;
     char **tags_list = NULL;
 
-    ITEM **tasks_items;
-    MENU *tasks_menu;
-    WINDOW *tasks_win;
-    Tasks all_tasks = {.task_count = 0, .task_list = NULL};
+    TasksPane tasks_pane = {
+        .win    = NULL,
+        .menu   = NULL,
+        .items  = NULL,
+        .tasks_struct = {.task_count = 0, .task_list = NULL}
+    };
 
-    WINDOW *task_descreption;
+
+    WINDOW *task_details_win;
 
     initscr();          
     cbreak();
@@ -53,15 +65,14 @@ void init_tui(sqlite3 *db){
     nodelay(stdscr, TRUE);
     refresh();
 
-    int height, width;
     int ch ,c;
     int choise = -1;
 
 
     curs_set(0);
-    getmaxyx(stdscr, height, width); 
+    getmaxyx(stdscr, src_height, src_width); 
 
-    WINDOW *top_bar = create_newwin(3, width, 0, 0);
+    WINDOW *top_bar = create_newwin(3, src_width, 0, 0);
 
     // filer menu
     filter_items = (ITEM **)calloc(tasks_filters_count+1, sizeof(ITEM *));
@@ -98,7 +109,7 @@ void init_tui(sqlite3 *db){
     tags_items[tags_count] = NULL;
 
     tags_menu = new_menu((ITEM **)tags_items);
-    tags_bar_win = create_newwin(height - 16, SIDE_BAR_WIDTH, 13, 0);
+    tags_bar_win = create_newwin(src_height - 16, SIDE_BAR_WIDTH, 13, 0);
     keypad(tags_bar_win, TRUE);
     set_menu_win(tags_menu, tags_bar_win);
     set_menu_sub(tags_menu, derwin(tags_bar_win, 6, SIDE_BAR_WIDTH-4, 4,2));
@@ -114,43 +125,52 @@ void init_tui(sqlite3 *db){
     wrefresh(tags_bar_win);
 
     // tasks win/menu
-    load_tasks(db, &all_tasks);
+    load_tasks(db, &tasks_pane.tasks_struct);
 
-    tasks_items = (ITEM **)calloc(all_tasks.task_count + 1, sizeof(ITEM *));
-    for(int i = 0; i < all_tasks.task_count; i++){
-        tasks_items[i] = new_item(all_tasks.task_list[i].title, all_tasks.task_list[i].desc);
-        set_item_userptr(tasks_items[i], &all_tasks.task_list[i]);
+    tasks_pane.items = (ITEM **)calloc(tasks_pane.tasks_struct.task_count + 1, sizeof(ITEM *));
+    for(int i = 0; i < tasks_pane.tasks_struct.task_count; i++){
+        tasks_pane.items[i] = new_item(tasks_pane.tasks_struct.task_list[i].title, tasks_pane.tasks_struct.task_list[i].desc);
+        set_item_userptr(tasks_pane.items[i], &tasks_pane.tasks_struct.task_list[i]);
     }
 
-    tasks_items[all_tasks.task_count] = NULL;
+    tasks_pane.items[tasks_pane.tasks_struct.task_count] = NULL;
 
-    tasks_menu = new_menu((ITEM **)tasks_items);
-    tasks_win = create_newwin(height - 6, (width-SIDE_BAR_WIDTH)/2, 3, SIDE_BAR_WIDTH);
-    keypad(tasks_win, TRUE);
-    set_menu_win(tasks_menu, tasks_win);
-    set_menu_sub(tasks_menu, derwin(tasks_win, 6, ((width-SIDE_BAR_WIDTH)/2)-4, 4,2));
-    set_menu_mark(tasks_menu, " * ");
-    box(tasks_win, 0, 0);
+    tasks_pane.menu = new_menu((ITEM **)tasks_pane.items);
+    tasks_pane.win = create_newwin(src_height - 6, (src_width-SIDE_BAR_WIDTH)/2, 3, SIDE_BAR_WIDTH);
+    keypad(tasks_pane.win, TRUE);
+    set_menu_win(tasks_pane.menu, tasks_pane.win);
+    set_menu_sub(tasks_pane.menu, derwin(tasks_pane.win, 6, ((src_width-SIDE_BAR_WIDTH)/2)-4, 4,2));
+    set_menu_mark(tasks_pane.menu, " * ");
+    box(tasks_pane.win, 0, 0);
 
-    print_in_middle(tasks_win, 1,0,(width-SIDE_BAR_WIDTH)/2, "TASKS");
-    mvwaddch(tasks_win, 2, 0, ACS_LTEE);
-	mvwhline(tasks_win, 2, 1, ACS_HLINE, ((width-SIDE_BAR_WIDTH)/2)-2);
-	mvwaddch(tasks_win, 2, ((width-SIDE_BAR_WIDTH)/2)-1, ACS_RTEE);
+    print_in_middle(tasks_pane.win, 1,0,(src_width-SIDE_BAR_WIDTH)/2, "TASKS");
+    mvwaddch(tasks_pane.win, 2, 0, ACS_LTEE);
+	mvwhline(tasks_pane.win, 2, 1, ACS_HLINE, ((src_width-SIDE_BAR_WIDTH)/2)-2);
+	mvwaddch(tasks_pane.win, 2, ((src_width-SIDE_BAR_WIDTH)/2)-1, ACS_RTEE);
 
-    post_menu(tasks_menu);
-    wrefresh(tasks_win);
+    post_menu(tasks_pane.menu);
+    wrefresh(tasks_pane.win);
+
+    // details win
+    task_details_win = create_newwin(src_height - 6, (src_width-SIDE_BAR_WIDTH)/2, 3, SIDE_BAR_WIDTH + (src_width-SIDE_BAR_WIDTH)/2);
+    box(task_details_win, 0, 0);
+    print_in_middle(task_details_win, 1,0,(src_width-SIDE_BAR_WIDTH)/2, "Details");
+    mvwaddch(task_details_win, 2, 0, ACS_LTEE);
+	mvwhline(task_details_win, 2, 1, ACS_HLINE, ((src_width-SIDE_BAR_WIDTH)/2)-2);
+	mvwaddch(task_details_win, 2, ((src_width-SIDE_BAR_WIDTH)/2)-1, ACS_RTEE);
+    wrefresh(task_details_win);
 
 
     add_focusable_window(filters_bar_win, filter_menu);
     add_focusable_window(tags_bar_win, tags_menu);
-    add_focusable_window(tasks_win, tasks_menu);
+    add_focusable_window(tasks_pane.win, tasks_pane.menu);
 
     focusable_menus[0].is_focused = 1;
     update_window_focus();
 
 
     while((ch = getch())!='q'){
-        update_time_top_bar(top_bar, 1, width);
+        update_time_top_bar(top_bar, 1, src_width);
 
         if (ch == 9){
             switch_focus();
@@ -168,21 +188,31 @@ void init_tui(sqlite3 *db){
 
             case KEY_UP:
                 menu_driver(current_menu -> menu, REQ_UP_ITEM);
+
+                if (current_focus_idx == 2){
+                    show_task_details(task_details_win, (Task *)item_userptr(current_item(current_menu -> menu)));
+                }
+
                 break;
 
             case KEY_DOWN:
                 menu_driver(current_menu -> menu, REQ_DOWN_ITEM);
+
+                if (current_focus_idx == 2){
+                    show_task_details(task_details_win, (Task *)item_userptr(current_item(current_menu -> menu)));
+                }
+
                 break;
 
             case 10:
 				clrtoeol();
-				mvprintw(height-3, 1, "Item selected is : %s", item_name(current_item(current_menu -> menu)));
+				mvprintw(src_height-3, 1, "Item selected is : %s", item_name(current_item(current_menu -> menu)));
 				pos_menu_cursor(current_menu -> menu);
 				break;
             case 'q':
                 exit(0);
             default:
-				mvprintw(height-2, 1, "Charcter pressed is = %3d\nHopefully it can be printed as '%c'", c, c);
+				mvprintw(src_height-2, 1, "Charcter pressed is = %3d\nHopefully it can be printed as '%c'", c, c);
 				refresh();
 				break;
         }
@@ -199,10 +229,10 @@ void init_tui(sqlite3 *db){
     
 }
 
-WINDOW *create_newwin(int height, int width, int starty, int startx){
+WINDOW *create_newwin(int src_height, int src_width, int starty, int startx){
     WINDOW *local_win;
 
-    local_win = newwin(height, width, starty, startx);
+    local_win = newwin(src_height, src_width, starty, startx);
     box(local_win, 0, 0);
 
     wrefresh(local_win);
@@ -217,12 +247,12 @@ void destroy_win(WINDOW *win){
     delwin(win);
 }
 
-void update_time_top_bar(WINDOW *win, int y_pos, int width){
+void update_time_top_bar(WINDOW *win, int y_pos, int src_width){
     time_t now = time(NULL);
     char time_str[64];
     strftime(time_str,sizeof(time_str),"%a %d %b %H:%M",localtime(&now));
     wattron(win,A_ITALIC | A_BOLD);
-    wmove(win,y_pos,(width - strlen(time_str))/2);
+    wmove(win,y_pos,(src_width - strlen(time_str))/2);
     clrtoeol();
     wprintw(win,"%s",time_str);
     wattroff(win,A_ITALIC | A_BOLD);
@@ -307,7 +337,7 @@ void cleanup_menus(){
 }
 
 
-void print_in_middle(WINDOW *win, int starty, int startx, int width, char *string){
+void print_in_middle(WINDOW *win, int starty, int startx, int src_width, char *string){
 
     int length, x, y;
 	float temp;
@@ -319,12 +349,54 @@ void print_in_middle(WINDOW *win, int starty, int startx, int width, char *strin
 		x = startx;
 	if(starty != 0)
 		y = starty;
-	if(width == 0)
-		width = 80;
+	if(src_width == 0)
+		src_width = 80;
 
 	length = strlen(string);
-	temp = (width - length)/ 2;
+	temp = (src_width - length)/ 2;
 	x = startx + (int)temp;
 	mvwprintw(win, y, x, "%s", string);
 	refresh();
 }
+
+// void reload_tasks_menu(sqlite3 *db,Tasks *tasks_struct, const char *where_clause){
+
+//     // ITEM **old_items = (ITEM **)menu_items();
+//     return;
+
+// }
+
+void show_task_details(WINDOW *win ,Task *t) {
+    werase(win);
+    box(win, 0,0);
+
+    
+    mvwaddch(win, 2, 0, ACS_LTEE);
+	mvwhline(win, 2, 1, ACS_HLINE, ((src_width-SIDE_BAR_WIDTH)/2)-2);
+	mvwaddch(win, 2, ((src_width-SIDE_BAR_WIDTH)/2)-1, ACS_RTEE);
+
+    // mvwprintw(win, 3, 2, "ID:   %d", t->id);
+    // mvwprintw(win, 4, 2, "Title: %s", t->title);
+    print_in_middle(win, 1,0,(src_width-SIDE_BAR_WIDTH)/2, t->title);
+    mvwprintw(win, 5, 2, "Desc:  %s", t->desc);
+    mvwprintw(win, 6, 2, "Status: %s", t->status ? "Completed" : "Pending");
+
+    time_t created_at = (time_t)t->created_at;
+    struct tm *lt1 = localtime(&created_at);
+
+    char created_at_buf[64];
+    strftime(created_at_buf, sizeof(created_at_buf), "%d-%m-%Y %H:%M:%S", lt1);
+
+    mvwprintw(win, 7, 2, "Created at: %s", created_at_buf);
+
+    time_t due_date = (time_t)t->due_date;
+    struct tm *lt2 = localtime(&due_date);
+
+    char due_date_buf[64];
+    strftime(due_date_buf, sizeof(due_date_buf), "%d-%m-%Y %H:%M:%S", lt2);
+
+    mvwprintw(win, 8, 2, "Due at: %s", due_date_buf);
+
+    wrefresh(win);
+}
+

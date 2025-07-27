@@ -4,6 +4,8 @@
 #include <ncurses.h>
 #include <menu.h>
 
+#include "database.h"
+
 #define SIDE_BAR_WIDTH 20
 
 void init_tui(sqlite3 *db);
@@ -20,6 +22,8 @@ void print_in_middle(WINDOW *win, int starty, int startx, int width, char *strin
 void switch_focus();
 void update_window_focus();
 void cleanup_menus();
+
+void show_task_details(WINDOW *win ,Task *t);
 
 
 #endif
