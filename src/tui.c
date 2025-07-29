@@ -129,24 +129,30 @@ void init_tui(sqlite3 *db){
 
     tasks_pane.items = (ITEM **)calloc(tasks_pane.tasks_struct.task_count + 1, sizeof(ITEM *));
     for(int i = 0; i < tasks_pane.tasks_struct.task_count; i++){
-        tasks_pane.items[i] = new_item(tasks_pane.tasks_struct.task_list[i].title, tasks_pane.tasks_struct.task_list[i].desc);
+        tasks_pane.items[i] = new_item(tasks_pane.tasks_struct.task_list[i].title, NULL);
         set_item_userptr(tasks_pane.items[i], &tasks_pane.tasks_struct.task_list[i]);
     }
 
     tasks_pane.items[tasks_pane.tasks_struct.task_count] = NULL;
+    int available_height = (src_height - 6) - 8;
+    int tasks_submenu_height = available_height - 2; 
 
     tasks_pane.menu = new_menu((ITEM **)tasks_pane.items);
     tasks_pane.win = create_newwin(src_height - 6, (src_width-SIDE_BAR_WIDTH)/2, 3, SIDE_BAR_WIDTH);
     keypad(tasks_pane.win, TRUE);
     set_menu_win(tasks_pane.menu, tasks_pane.win);
-    set_menu_sub(tasks_pane.menu, derwin(tasks_pane.win, 6, ((src_width-SIDE_BAR_WIDTH)/2)-4, 4,2));
+    // set_menu_sub(tasks_pane.menu, derwin(tasks_pane.win, 30, ((src_width-SIDE_BAR_WIDTH)/2)-4, 4,2));
+    set_menu_sub(tasks_pane.menu, derwin(tasks_pane.win, tasks_submenu_height, ((src_width-SIDE_BAR_WIDTH)/2)-4, 4, 2));
     set_menu_mark(tasks_pane.menu, " * ");
 
-    ITEM *items2[] = { new_item("A: test test test", NULL), new_item("B test test test", NULL), NULL };
-    MENU *menu2 = new_menu(items2);
-    set_menu_win(menu2, tasks_pane.win);
-    set_menu_sub(menu2, derwin(tasks_pane.win, 6, ((src_width-SIDE_BAR_WIDTH)/2)-4, ((src_height -4)/2)+3,2));
-    set_menu_mark(menu2, " # ");
+
+    // int completed_start_y = 4 + tasks_submenu_height + 4;
+    // ITEM *items2[] = { new_item("A: test test test", NULL), new_item("B test test test", NULL), NULL };
+    // MENU *menu2 = new_menu(items2);
+    // set_menu_win(menu2, tasks_pane.win);
+    // // set_menu_sub(menu2, derwin(tasks_pane.win, 6, ((src_width-SIDE_BAR_WIDTH)/2)-4, ((src_height -4)/2)+3,2));
+    // set_menu_sub(menu2, derwin(tasks_pane.win, tasks_submenu_height, ((src_width-SIDE_BAR_WIDTH)/2)-4, completed_start_y, 2));
+    // set_menu_mark(menu2, " # ");
 
 
     box(tasks_pane.win, 0, 0);
@@ -156,14 +162,14 @@ void init_tui(sqlite3 *db){
 	mvwhline(tasks_pane.win, 2, 1, ACS_HLINE, ((src_width-SIDE_BAR_WIDTH)/2)-2);
 	mvwaddch(tasks_pane.win, 2, ((src_width-SIDE_BAR_WIDTH)/2)-1, ACS_RTEE);
 
-    int header2_y =(src_height -4)/2;     
-    print_in_middle(tasks_pane.win, header2_y, 0, (src_width - SIDE_BAR_WIDTH) / 2, "COMPLETED");
-    mvwaddch(tasks_pane.win, header2_y-1, 0, ACS_LTEE);
-    mvwhline (tasks_pane.win, header2_y-1, 1, ACS_HLINE, ((src_width - SIDE_BAR_WIDTH) / 2)-2);
-    mvwaddch(tasks_pane.win, header2_y-1, (((src_width - SIDE_BAR_WIDTH) / 2)-1), ACS_RTEE);
-    mvwaddch(tasks_pane.win, header2_y+1, 0, ACS_LTEE);
-    mvwhline (tasks_pane.win, header2_y+1, 1, ACS_HLINE, ((src_width - SIDE_BAR_WIDTH) / 2)-2);
-    mvwaddch(tasks_pane.win, header2_y+1, (((src_width - SIDE_BAR_WIDTH) / 2)-1), ACS_RTEE);
+    // int header2_y =(src_height -4)/2;     
+    // print_in_middle(tasks_pane.win, header2_y, 0, (src_width - SIDE_BAR_WIDTH) / 2, "COMPLETED");
+    // mvwaddch(tasks_pane.win, header2_y-1, 0, ACS_LTEE);
+    // mvwhline (tasks_pane.win, header2_y-1, 1, ACS_HLINE, ((src_width - SIDE_BAR_WIDTH) / 2)-2);
+    // mvwaddch(tasks_pane.win, header2_y-1, (((src_width - SIDE_BAR_WIDTH) / 2)-1), ACS_RTEE);
+    // mvwaddch(tasks_pane.win, header2_y+1, 0, ACS_LTEE);
+    // mvwhline (tasks_pane.win, header2_y+1, 1, ACS_HLINE, ((src_width - SIDE_BAR_WIDTH) / 2)-2);
+    // mvwaddch(tasks_pane.win, header2_y+1, (((src_width - SIDE_BAR_WIDTH) / 2)-1), ACS_RTEE);
 
     // mvprintw(src_height - 15, ((src_width-SIDE_BAR_WIDTH)/2)+SIDE_BAR_WIDTH,
     //     "src_width: %d, src_height: %d\nwin:\nheight: %d, width: %d, start_y: %d, start_x: %d\n1st sub win:\nheight: %d, width: %d, start_y: %d, start_x: %d\n2nd sub win:\nheight: %d, width: %d, start_y: %d, start_x: %d",
@@ -174,7 +180,7 @@ void init_tui(sqlite3 *db){
     // );
 
     post_menu(tasks_pane.menu);
-    post_menu(menu2);
+    // post_menu(menu2);
     wrefresh(tasks_pane.win);
 
     // details win
@@ -406,8 +412,8 @@ void show_task_details(WINDOW *win ,Task *t) {
 	mvwhline(win, 2, 1, ACS_HLINE, ((src_width-SIDE_BAR_WIDTH)/2)-2);
 	mvwaddch(win, 2, ((src_width-SIDE_BAR_WIDTH)/2)-1, ACS_RTEE);
 
-    // mvwprintw(win, 3, 2, "ID:   %d", t->id);
-    // mvwprintw(win, 4, 2, "Title: %s", t->title);
+    mvwprintw(win, 3, 2, "ID:   %d", t->id);
+    mvwprintw(win, 4, 2, "Title: %s", t->title);
     print_in_middle(win, 1,0,(src_width-SIDE_BAR_WIDTH)/2, t->title);
     mvwprintw(win, 5, 2, "Desc:  %s", t->desc);
     mvwprintw(win, 6, 2, "Status: %s", t->status ? "Completed" : "Pending");
