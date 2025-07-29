@@ -17,12 +17,7 @@ char *tasks_filters_list[] = {
 
 int tasks_filters_count = 5;
 
-typedef struct _TasksPane{
-    WINDOW *win;
-    MENU *menu;
-    ITEM **items;
-    Tasks tasks_struct;
-} TasksPane;
+
 
 typedef struct _FocusableMenu {
     WINDOW *win;
@@ -66,132 +61,16 @@ void init_tui(sqlite3 *db){
     refresh();
 
     int ch ,c;
-    int choise = -1;
-
 
     curs_set(0);
     getmaxyx(stdscr, src_height, src_width); 
 
-    WINDOW *top_bar = create_newwin(3, src_width, 0, 0);
 
-    // filer menu
-    filter_items = (ITEM **)calloc(tasks_filters_count+1, sizeof(ITEM *));
-    for (int i = 0; i < tasks_filters_count ; i++){
-        filter_items[i] = new_item(tasks_filters_list[i],NULL);
-    }
-
-    filter_items[tasks_filters_count] = NULL;
-
-    filter_menu = new_menu((ITEM **)filter_items);
-    filters_bar_win = create_newwin(10, SIDE_BAR_WIDTH, 3, 0);
-    keypad(filters_bar_win, TRUE);
-    set_menu_win(filter_menu, filters_bar_win);
-    set_menu_sub(filter_menu, derwin(filters_bar_win, 6, SIDE_BAR_WIDTH -2 , 4, 2));
-    set_menu_mark(filter_menu, " * ");
-    box(filters_bar_win, 0, 0);
-
-    print_in_middle(filters_bar_win, 1, 0, SIDE_BAR_WIDTH, "Filters");
-    mvwaddch(filters_bar_win, 2, 0, ACS_LTEE);
-	mvwhline(filters_bar_win, 2, 1, ACS_HLINE, SIDE_BAR_WIDTH-2);
-	mvwaddch(filters_bar_win, 2, SIDE_BAR_WIDTH-1, ACS_RTEE);
-
-    post_menu(filter_menu);
-    wrefresh(filters_bar_win);
-
-    // tags menu
-    load_tags(db, &tags_list, &tags_count);
-
-    tags_items = (ITEM **)calloc(tags_count+1, sizeof(ITEM *));
-    for (int i = 0; i < tags_count; i++){
-        tags_items[i] = new_item(tags_list[i], NULL);
-    }
-
-    tags_items[tags_count] = NULL;
-
-    tags_menu = new_menu((ITEM **)tags_items);
-    tags_bar_win = create_newwin(src_height - 16, SIDE_BAR_WIDTH, 13, 0);
-    keypad(tags_bar_win, TRUE);
-    set_menu_win(tags_menu, tags_bar_win);
-    set_menu_sub(tags_menu, derwin(tags_bar_win, 6, SIDE_BAR_WIDTH-4, 4,2));
-    set_menu_mark(tags_menu, " * ");
-    box(tags_bar_win,0,0);
-
-    print_in_middle(tags_bar_win, 1, 0, SIDE_BAR_WIDTH-1, "Tags");
-    mvwaddch(tags_bar_win, 2, 0, ACS_LTEE);
-	mvwhline(tags_bar_win, 2, 1, ACS_HLINE, SIDE_BAR_WIDTH-2);
-	mvwaddch(tags_bar_win, 2, SIDE_BAR_WIDTH-1, ACS_RTEE);
-
-    post_menu(tags_menu);
-    wrefresh(tags_bar_win);
-
-    // tasks win/menu
-    load_tasks(db, &tasks_pane.tasks_struct);
-
-    tasks_pane.items = (ITEM **)calloc(tasks_pane.tasks_struct.task_count + 1, sizeof(ITEM *));
-    for(int i = 0; i < tasks_pane.tasks_struct.task_count; i++){
-        tasks_pane.items[i] = new_item(tasks_pane.tasks_struct.task_list[i].title, NULL);
-        set_item_userptr(tasks_pane.items[i], &tasks_pane.tasks_struct.task_list[i]);
-    }
-
-    tasks_pane.items[tasks_pane.tasks_struct.task_count] = NULL;
-    int available_height = (src_height - 6) - 8;
-    int tasks_submenu_height = available_height - 2; 
-
-    tasks_pane.menu = new_menu((ITEM **)tasks_pane.items);
-    tasks_pane.win = create_newwin(src_height - 6, (src_width-SIDE_BAR_WIDTH)/2, 3, SIDE_BAR_WIDTH);
-    keypad(tasks_pane.win, TRUE);
-    set_menu_win(tasks_pane.menu, tasks_pane.win);
-    // set_menu_sub(tasks_pane.menu, derwin(tasks_pane.win, 30, ((src_width-SIDE_BAR_WIDTH)/2)-4, 4,2));
-    set_menu_sub(tasks_pane.menu, derwin(tasks_pane.win, tasks_submenu_height, ((src_width-SIDE_BAR_WIDTH)/2)-4, 4, 2));
-    set_menu_mark(tasks_pane.menu, " * ");
-
-
-    // int completed_start_y = 4 + tasks_submenu_height + 4;
-    // ITEM *items2[] = { new_item("A: test test test", NULL), new_item("B test test test", NULL), NULL };
-    // MENU *menu2 = new_menu(items2);
-    // set_menu_win(menu2, tasks_pane.win);
-    // // set_menu_sub(menu2, derwin(tasks_pane.win, 6, ((src_width-SIDE_BAR_WIDTH)/2)-4, ((src_height -4)/2)+3,2));
-    // set_menu_sub(menu2, derwin(tasks_pane.win, tasks_submenu_height, ((src_width-SIDE_BAR_WIDTH)/2)-4, completed_start_y, 2));
-    // set_menu_mark(menu2, " # ");
-
-
-    box(tasks_pane.win, 0, 0);
-
-    print_in_middle(tasks_pane.win, 1,0,(src_width-SIDE_BAR_WIDTH)/2, "TASKS");
-    mvwaddch(tasks_pane.win, 2, 0, ACS_LTEE);
-	mvwhline(tasks_pane.win, 2, 1, ACS_HLINE, ((src_width-SIDE_BAR_WIDTH)/2)-2);
-	mvwaddch(tasks_pane.win, 2, ((src_width-SIDE_BAR_WIDTH)/2)-1, ACS_RTEE);
-
-    // int header2_y =(src_height -4)/2;     
-    // print_in_middle(tasks_pane.win, header2_y, 0, (src_width - SIDE_BAR_WIDTH) / 2, "COMPLETED");
-    // mvwaddch(tasks_pane.win, header2_y-1, 0, ACS_LTEE);
-    // mvwhline (tasks_pane.win, header2_y-1, 1, ACS_HLINE, ((src_width - SIDE_BAR_WIDTH) / 2)-2);
-    // mvwaddch(tasks_pane.win, header2_y-1, (((src_width - SIDE_BAR_WIDTH) / 2)-1), ACS_RTEE);
-    // mvwaddch(tasks_pane.win, header2_y+1, 0, ACS_LTEE);
-    // mvwhline (tasks_pane.win, header2_y+1, 1, ACS_HLINE, ((src_width - SIDE_BAR_WIDTH) / 2)-2);
-    // mvwaddch(tasks_pane.win, header2_y+1, (((src_width - SIDE_BAR_WIDTH) / 2)-1), ACS_RTEE);
-
-    // mvprintw(src_height - 15, ((src_width-SIDE_BAR_WIDTH)/2)+SIDE_BAR_WIDTH,
-    //     "src_width: %d, src_height: %d\nwin:\nheight: %d, width: %d, start_y: %d, start_x: %d\n1st sub win:\nheight: %d, width: %d, start_y: %d, start_x: %d\n2nd sub win:\nheight: %d, width: %d, start_y: %d, start_x: %d",
-    //     src_width, src_height,
-    //     src_height - 6, (src_width-SIDE_BAR_WIDTH)/2, 3, SIDE_BAR_WIDTH,
-    //     6, ((src_width-SIDE_BAR_WIDTH)/2)-4, 4,2,
-    //     6, ((src_width-SIDE_BAR_WIDTH)/2)-4, (src_height -4)/2,2
-    // );
-
-    post_menu(tasks_pane.menu);
-    // post_menu(menu2);
-    wrefresh(tasks_pane.win);
-
-    // details win
-    task_details_win = create_newwin(src_height - 6, (src_width-SIDE_BAR_WIDTH)/2, 3, SIDE_BAR_WIDTH + (src_width-SIDE_BAR_WIDTH)/2);
-    box(task_details_win, 0, 0);
-    print_in_middle(task_details_win, 1,0,(src_width-SIDE_BAR_WIDTH)/2, "Details");
-    mvwaddch(task_details_win, 2, 0, ACS_LTEE);
-	mvwhline(task_details_win, 2, 1, ACS_HLINE, ((src_width-SIDE_BAR_WIDTH)/2)-2);
-	mvwaddch(task_details_win, 2, ((src_width-SIDE_BAR_WIDTH)/2)-1, ACS_RTEE);
-    wrefresh(task_details_win);
-
+    WINDOW *top_bar = create_top_bar();
+    create_filter_menu(&filter_items, &filter_menu, &filters_bar_win);
+    create_tags_menu(db, &tags_items, &tags_menu, &tags_bar_win, &tags_list, &tags_count);
+    create_tasks_menu(db, &tasks_pane);
+    task_details_win = create_task_details_window();
 
     add_focusable_window(filters_bar_win, filter_menu);
     add_focusable_window(tags_bar_win, tags_menu);
@@ -437,3 +316,113 @@ void show_task_details(WINDOW *win ,Task *t) {
     wrefresh(win);
 }
 
+
+WINDOW* create_top_bar() {
+    WINDOW *top_bar = create_newwin(3, src_width, 0, 0);
+    return top_bar;
+}
+
+
+void create_filter_menu(ITEM ***filter_items, MENU **filter_menu, WINDOW **filters_bar_win) {
+    *filter_items = (ITEM **)calloc(tasks_filters_count + 1, sizeof(ITEM *));
+    for (int i = 0; i < tasks_filters_count; i++) {
+        (*filter_items)[i] = new_item(tasks_filters_list[i], NULL);
+    }
+    (*filter_items)[tasks_filters_count] = NULL;
+
+    *filter_menu = new_menu((ITEM **)*filter_items);
+    *filters_bar_win = create_newwin(10, SIDE_BAR_WIDTH, 3, 0);
+    keypad(*filters_bar_win, TRUE);
+    
+    set_menu_win(*filter_menu, *filters_bar_win);
+    set_menu_sub(*filter_menu, derwin(*filters_bar_win, 6, SIDE_BAR_WIDTH - 2, 4, 2));
+    set_menu_mark(*filter_menu, " * ");
+    box(*filters_bar_win, 0, 0);
+
+    print_in_middle(*filters_bar_win, 1, 0, SIDE_BAR_WIDTH, "Filters");
+    mvwaddch(*filters_bar_win, 2, 0, ACS_LTEE);
+    mvwhline(*filters_bar_win, 2, 1, ACS_HLINE, SIDE_BAR_WIDTH - 2);
+    mvwaddch(*filters_bar_win, 2, SIDE_BAR_WIDTH - 1, ACS_RTEE);
+
+    post_menu(*filter_menu);
+    wrefresh(*filters_bar_win);
+}
+
+void create_tags_menu(sqlite3 *db, ITEM ***tags_items, MENU **tags_menu, WINDOW **tags_bar_win, char ***tags_list, int *tags_count) {
+    load_tags(db, tags_list, tags_count);
+
+    *tags_items = (ITEM **)calloc(*tags_count + 1, sizeof(ITEM *));
+    for (int i = 0; i < *tags_count; i++) {
+        (*tags_items)[i] = new_item((*tags_list)[i], NULL);
+    }
+    (*tags_items)[*tags_count] = NULL;
+
+    *tags_menu = new_menu((ITEM **)*tags_items);
+    *tags_bar_win = create_newwin(src_height - 16, SIDE_BAR_WIDTH, 13, 0);
+    keypad(*tags_bar_win, TRUE);
+    
+    set_menu_win(*tags_menu, *tags_bar_win);
+    set_menu_sub(*tags_menu, derwin(*tags_bar_win, src_height - 16 - 4, SIDE_BAR_WIDTH - 4, 4, 2));
+    set_menu_format(*tags_menu, 35,1);
+    set_menu_mark(*tags_menu, " * ");
+    box(*tags_bar_win, 0, 0);
+
+    print_in_middle(*tags_bar_win, 1, 0, SIDE_BAR_WIDTH - 1, "Tags");
+    mvwaddch(*tags_bar_win, 2, 0, ACS_LTEE);
+    mvwhline(*tags_bar_win, 2, 1, ACS_HLINE, SIDE_BAR_WIDTH - 2);
+    mvwaddch(*tags_bar_win, 2, SIDE_BAR_WIDTH - 1, ACS_RTEE);
+
+    post_menu(*tags_menu);
+    wrefresh(*tags_bar_win);
+}
+
+void create_tasks_menu(sqlite3 *db, TasksPane *tasks_pane) {
+    load_tasks(db, &tasks_pane->tasks_struct);
+
+    tasks_pane->items = (ITEM **)calloc(tasks_pane->tasks_struct.task_count + 1, sizeof(ITEM *));
+    for (int i = 0; i < tasks_pane->tasks_struct.task_count; i++) {
+        tasks_pane->items[i] = new_item(tasks_pane->tasks_struct.task_list[i].title, NULL);
+        set_item_userptr(tasks_pane->items[i], &tasks_pane->tasks_struct.task_list[i]);
+    }
+    tasks_pane->items[tasks_pane->tasks_struct.task_count] = NULL;
+
+    int window_height = src_height - 6;
+    int window_width = (src_width - SIDE_BAR_WIDTH) / 2;
+    int submenu_height = window_height - 6;
+    int submenu_width = window_width - 4;
+
+    tasks_pane->menu = new_menu((ITEM **)tasks_pane->items);
+    tasks_pane->win = create_newwin(window_height, window_width, 3, SIDE_BAR_WIDTH);
+    keypad(tasks_pane->win, TRUE);
+    
+    set_menu_win(tasks_pane->menu, tasks_pane->win);
+    set_menu_sub(tasks_pane->menu, derwin(tasks_pane->win, submenu_height, submenu_width, 4, 2));
+    set_menu_format(tasks_pane->menu, 45, 1);
+    set_menu_mark(tasks_pane->menu, " * ");
+    box(tasks_pane->win, 0, 0);
+
+    print_in_middle(tasks_pane->win, 1, 0, window_width, "TASKS");
+    mvwaddch(tasks_pane->win, 2, 0, ACS_LTEE);
+    mvwhline(tasks_pane->win, 2, 1, ACS_HLINE, window_width - 2);
+    mvwaddch(tasks_pane->win, 2, window_width - 1, ACS_RTEE);
+
+    post_menu(tasks_pane->menu);
+    wrefresh(tasks_pane->win);
+}
+
+WINDOW* create_task_details_window() {
+    int window_height = src_height - 6;
+    int window_width = (src_width - SIDE_BAR_WIDTH) / 2;
+    int x_pos = SIDE_BAR_WIDTH + window_width;
+    
+    WINDOW *task_details_win = create_newwin(window_height, window_width, 3, x_pos);
+    box(task_details_win, 0, 0);
+    
+    print_in_middle(task_details_win, 1, 0, window_width, "Details");
+    mvwaddch(task_details_win, 2, 0, ACS_LTEE);
+    mvwhline(task_details_win, 2, 1, ACS_HLINE, window_width - 2);
+    mvwaddch(task_details_win, 2, window_width - 1, ACS_RTEE);
+    
+    wrefresh(task_details_win);
+    return task_details_win;
+}
