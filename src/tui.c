@@ -38,9 +38,9 @@ int src_width, src_height;
 
 void init_tui(sqlite3 *db){
 
-    ITEM  **filter_items;
-    MENU *filter_menu;
-    WINDOW *filters_bar_win;
+    ITEM  **filter_items = NULL;
+    MENU *filter_menu = NULL;
+    WINDOW *filters_bar_win = NULL;
     
     ITEM **tags_items;
     MENU *tags_menu;
@@ -56,7 +56,7 @@ void init_tui(sqlite3 *db){
     };
 
 
-    WINDOW *task_details_win;
+    WINDOW *task_details_win = NULL;
 
     initscr();          
     cbreak();
@@ -141,6 +141,14 @@ void init_tui(sqlite3 *db){
     set_menu_win(tasks_pane.menu, tasks_pane.win);
     set_menu_sub(tasks_pane.menu, derwin(tasks_pane.win, 6, ((src_width-SIDE_BAR_WIDTH)/2)-4, 4,2));
     set_menu_mark(tasks_pane.menu, " * ");
+
+    ITEM *items2[] = { new_item("A: test test test", NULL), new_item("B test test test", NULL), NULL };
+    MENU *menu2 = new_menu(items2);
+    set_menu_win(menu2, tasks_pane.win);
+    set_menu_sub(menu2, derwin(tasks_pane.win, 6, ((src_width-SIDE_BAR_WIDTH)/2)-4, ((src_height -4)/2)+3,2));
+    set_menu_mark(menu2, " # ");
+
+
     box(tasks_pane.win, 0, 0);
 
     print_in_middle(tasks_pane.win, 1,0,(src_width-SIDE_BAR_WIDTH)/2, "TASKS");
@@ -148,7 +156,25 @@ void init_tui(sqlite3 *db){
 	mvwhline(tasks_pane.win, 2, 1, ACS_HLINE, ((src_width-SIDE_BAR_WIDTH)/2)-2);
 	mvwaddch(tasks_pane.win, 2, ((src_width-SIDE_BAR_WIDTH)/2)-1, ACS_RTEE);
 
+    int header2_y =(src_height -4)/2;     
+    print_in_middle(tasks_pane.win, header2_y, 0, (src_width - SIDE_BAR_WIDTH) / 2, "COMPLETED");
+    mvwaddch(tasks_pane.win, header2_y-1, 0, ACS_LTEE);
+    mvwhline (tasks_pane.win, header2_y-1, 1, ACS_HLINE, ((src_width - SIDE_BAR_WIDTH) / 2)-2);
+    mvwaddch(tasks_pane.win, header2_y-1, (((src_width - SIDE_BAR_WIDTH) / 2)-1), ACS_RTEE);
+    mvwaddch(tasks_pane.win, header2_y+1, 0, ACS_LTEE);
+    mvwhline (tasks_pane.win, header2_y+1, 1, ACS_HLINE, ((src_width - SIDE_BAR_WIDTH) / 2)-2);
+    mvwaddch(tasks_pane.win, header2_y+1, (((src_width - SIDE_BAR_WIDTH) / 2)-1), ACS_RTEE);
+
+    // mvprintw(src_height - 15, ((src_width-SIDE_BAR_WIDTH)/2)+SIDE_BAR_WIDTH,
+    //     "src_width: %d, src_height: %d\nwin:\nheight: %d, width: %d, start_y: %d, start_x: %d\n1st sub win:\nheight: %d, width: %d, start_y: %d, start_x: %d\n2nd sub win:\nheight: %d, width: %d, start_y: %d, start_x: %d",
+    //     src_width, src_height,
+    //     src_height - 6, (src_width-SIDE_BAR_WIDTH)/2, 3, SIDE_BAR_WIDTH,
+    //     6, ((src_width-SIDE_BAR_WIDTH)/2)-4, 4,2,
+    //     6, ((src_width-SIDE_BAR_WIDTH)/2)-4, (src_height -4)/2,2
+    // );
+
     post_menu(tasks_pane.menu);
+    post_menu(menu2);
     wrefresh(tasks_pane.win);
 
     // details win
@@ -210,6 +236,11 @@ void init_tui(sqlite3 *db){
 				pos_menu_cursor(current_menu -> menu);
 				break;
             case 'q':
+                cleanup_menus();
+                destroy_win(top_bar);
+                destroy_win(filters_bar_win);   
+                destroy_win(tags_bar_win);
+                endwin();
                 exit(0);
             default:
 				mvprintw(src_height-2, 1, "Charcter pressed is = %3d\nHopefully it can be printed as '%c'", c, c);
@@ -226,7 +257,6 @@ void init_tui(sqlite3 *db){
     destroy_win(filters_bar_win);   
     destroy_win(tags_bar_win);
     endwin();
-    
 }
 
 WINDOW *create_newwin(int src_height, int src_width, int starty, int startx){
@@ -250,12 +280,13 @@ void destroy_win(WINDOW *win){
 void update_time_top_bar(WINDOW *win, int y_pos, int src_width){
     time_t now = time(NULL);
     char time_str[64];
+    clrtoeol();
     strftime(time_str,sizeof(time_str),"%a %d %b %H:%M",localtime(&now));
     wattron(win,A_ITALIC | A_BOLD);
     wmove(win,y_pos,(src_width - strlen(time_str))/2);
-    clrtoeol();
     wprintw(win,"%s",time_str);
     wattroff(win,A_ITALIC | A_BOLD);
+    box(win, 0,0);
     wrefresh(win);
 }
 
