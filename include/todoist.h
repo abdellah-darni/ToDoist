@@ -14,16 +14,6 @@ typedef enum
     TASK_OVERDUE
 } TaskStatus;
 
-typedef struct
-{
-    int id;
-    char title[MAX_TITLE_LEN];
-    char description[MAX_DESC_LEN];
-    TaskStatus status;
-    time_t due_date;
-    time_t created_at;
-    time_t updated_at;
-} Task;
 
 
 int add_task(sqlite3 *db, char *title, char *descreption, int due_date);

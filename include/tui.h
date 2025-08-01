@@ -4,9 +4,18 @@
 #include <ncurses.h>
 #include <menu.h>
 
+#include "database.h"
+
 #define SIDE_BAR_WIDTH 20
 
-void init_tui(char **list, int count);
+typedef struct _TasksPane{
+    WINDOW *win;
+    MENU *menu;
+    ITEM **items;
+    Tasks tasks_struct;
+} TasksPane;
+
+void init_tui(sqlite3 *db);
 WINDOW *create_newwin(int height, int width, int starty, int startx);
 void destroy_win(WINDOW *win);
 void update_time_top_bar(WINDOW *win, int y_pos, int x_pos);
@@ -20,6 +29,14 @@ void print_in_middle(WINDOW *win, int starty, int startx, int width, char *strin
 void switch_focus();
 void update_window_focus();
 void cleanup_menus();
+
+void show_task_details(WINDOW *win ,Task *t);
+
+WINDOW* create_top_bar();
+void create_filter_menu(ITEM ***filter_items, MENU **filter_menu, WINDOW **filters_bar_win);
+void create_tags_menu(sqlite3 *db, ITEM ***tags_items, MENU **tags_menu, WINDOW **tags_bar_win, char ***tags_list, int *tags_count);
+void create_tasks_menu(sqlite3 *db, TasksPane *tasks_pane);
+WINDOW* create_task_details_window();
 
 
 #endif

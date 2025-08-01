@@ -6,38 +6,46 @@
 
 
 
-#include "todoist.h"
+// #include "todoist.h"
 #include "database.h"
 #include "tui.h"
 
-
+void free_tasks(Tasks *tasks) {
+    for (int i = 0; i < tasks->task_count; i++) {
+        free(tasks->task_list[i].title);
+        free(tasks->task_list[i].desc);
+        free(tasks->task_list[i].tag);
+    }
+    free(tasks->task_list);
+    tasks->task_list = NULL;
+    tasks->task_count = 0;
+}
 
 int main(){
 
     sqlite3 *db = db_open(DEFAULT_DB_PATH);
 
+    Tasks all_tasks;
+    all_tasks.task_count = 0;
+    all_tasks.task_list = NULL;
+
     if (!db_init_schema(db)){
         printf("the table created\n");
     }
 
-    int tags_count;
-    char **tags_list = NULL;
+    char *where_close = "1 = 1";
 
-    int state = load_tags(db, &tags_list, &tags_count);
-    printf("state : %d\n", state);
-    if (state != 0){
-        printf("shitt !!");
-        return 1;
+    load_tasks_fillterd(db, &all_tasks, where_close);
+
+    // load_tasks(db, &all_tasks);
+
+    for(int i = 0; i < all_tasks.task_count; i++){
+        printf("id: %d\ttitle: %s\tdesc: %s\ttags: %s\n",all_tasks.task_list[i].id, all_tasks.task_list[i].title, all_tasks.task_list[i].desc, all_tasks.task_list[i].tag);
     }
 
-    for (int j = 0; j < tags_count; j++){
-        printf("- %s\n",tags_list[j]);
-    }
+    free_tasks(&all_tasks);
 
-    printf("the count : %d", tags_count);
-
-
-    init_tui(tags_list, tags_count);
+    // init_tui(db);
    
 
     return 0;
