@@ -38,5 +38,7 @@ void create_tags_menu(sqlite3 *db, ITEM ***tags_items, MENU **tags_menu, WINDOW 
 void create_tasks_menu(sqlite3 *db, TasksPane *tasks_pane);
 WINDOW* create_task_details_window();
 
+void create_tasks_menu_test(TasksPane *tasks_pane);
+void reload_tasks_menu(sqlite3 *db, TasksPane *tasks_pane, const char *where_clause);
 
 #endif

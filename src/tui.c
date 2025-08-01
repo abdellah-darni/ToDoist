@@ -69,7 +69,8 @@ void init_tui(sqlite3 *db){
     WINDOW *top_bar = create_top_bar();
     create_filter_menu(&filter_items, &filter_menu, &filters_bar_win);
     create_tags_menu(db, &tags_items, &tags_menu, &tags_bar_win, &tags_list, &tags_count);
-    create_tasks_menu(db, &tasks_pane);
+    // create_tasks_menu(db, &tasks_pane);
+    reload_tasks_menu(db, &tasks_pane,"1=1");
     task_details_win = create_task_details_window();
 
     add_focusable_window(filters_bar_win, filter_menu);
@@ -286,20 +287,42 @@ void reload_tasks_menu(sqlite3 *db, TasksPane *tasks_pane, const char *where_cla
     }
     free(old_items);
 
-    load_tasks_fillterd(db, tasks_pane, where_clause);
+    load_tasks_fillterd(db, &tasks_pane->tasks_struct, where_clause);
 
     int tasks_count = tasks_pane->tasks_struct.task_count+1;
     ITEM **new_items = calloc(tasks_count+1, sizeof(ITEM*));
 
     for (int i = 0; i < tasks_count; i++){
         new_items[i] = new_item(tasks_pane->tasks_struct.task_list[i].title, NULL);
-        set_menu_userptr(new_items[i], &tasks_pane->tasks_struct.task_list[i]);
+        set_item_userptr(new_items[i], &tasks_pane->tasks_struct.task_list[i]);
     }
     new_items[tasks_count] = NULL;
 
-    
+    free(tasks_pane->items);
+    tasks_pane->items = new_items;
 
-    return;
+    int window_height = src_height - 6;
+    int window_width = (src_width - SIDE_BAR_WIDTH) / 2;
+    int submenu_height = window_height - 6;
+    int submenu_width = window_width - 4;
+
+    tasks_pane->menu = new_menu((ITEM **)tasks_pane->items);
+    tasks_pane->win = create_newwin(window_height, window_width, 3, SIDE_BAR_WIDTH);
+    keypad(tasks_pane->win, TRUE);
+    
+    set_menu_win(tasks_pane->menu, tasks_pane->win);
+    set_menu_sub(tasks_pane->menu, derwin(tasks_pane->win, submenu_height, submenu_width, 4, 2));
+    set_menu_format(tasks_pane->menu, 45, 1);
+    set_menu_mark(tasks_pane->menu, " * ");
+    box(tasks_pane->win, 0, 0);
+
+    print_in_middle(tasks_pane->win, 1, 0, window_width, "TASKS");
+    mvwaddch(tasks_pane->win, 2, 0, ACS_LTEE);
+    mvwhline(tasks_pane->win, 2, 1, ACS_HLINE, window_width - 2);
+    mvwaddch(tasks_pane->win, 2, window_width - 1, ACS_RTEE);
+
+    post_menu(tasks_pane->menu);
+    wrefresh(tasks_pane->win);
 
 }
 
