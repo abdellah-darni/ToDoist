@@ -275,12 +275,35 @@ void print_in_middle(WINDOW *win, int starty, int startx, int src_width, char *s
 	refresh();
 }
 
-// void reload_tasks_menu(sqlite3 *db,Tasks *tasks_struct, const char *where_clause){
+void reload_tasks_menu(sqlite3 *db, TasksPane *tasks_pane, const char *where_clause){
 
-//     // ITEM **old_items = (ITEM **)menu_items();
-//     return;
+    ITEM **old_items = (ITEM **)menu_items(tasks_pane->menu);
+    int old_item_count = tasks_pane->tasks_struct.task_count;
+    unpost_menu(tasks_pane->menu);
+    free_menu(tasks_pane->menu);
+    for(int i = 0; i < old_item_count; i++){
+        free_item(old_items[i]);
+    }
+    free(old_items);
 
-// }
+    load_tasks_fillterd(db, tasks_pane, where_clause);
+
+    int tasks_count = tasks_pane->tasks_struct.task_count+1;
+    ITEM **new_items = calloc(tasks_count+1, sizeof(ITEM*));
+
+    for (int i = 0; i < tasks_count; i++){
+        new_items[i] = new_item(tasks_pane->tasks_struct.task_list[i].title, NULL);
+        set_menu_userptr(new_items[i], &tasks_pane->tasks_struct.task_list[i]);
+    }
+    new_items[tasks_count] = NULL;
+
+    
+
+    return;
+
+}
+
+
 
 void show_task_details(WINDOW *win ,Task *t) {
     werase(win);

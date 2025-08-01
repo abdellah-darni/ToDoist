@@ -30,5 +30,8 @@ int load_tags(sqlite3 *db, char ***tags_list, int *tag_count);
 
 int load_tasks(sqlite3 *db, Tasks *tasks);
 
+int load_tasks_fillterd(sqlite3 *db, Tasks *tasks, const char *where_close);
+
+
 
 #endif
