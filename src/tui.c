@@ -69,8 +69,7 @@ void init_tui(sqlite3 *db){
     WINDOW *top_bar = create_top_bar();
     create_filter_menu(&filter_items, &filter_menu, &filters_bar_win);
     create_tags_menu(db, &tags_items, &tags_menu, &tags_bar_win, &tags_list, &tags_count);
-    // create_tasks_menu(db, &tasks_pane);
-    reload_tasks_menu(db, &tasks_pane,"1=1");
+    create_tasks_menu(db, &tasks_pane);
     task_details_win = create_task_details_window();
 
     add_focusable_window(filters_bar_win, filter_menu);
@@ -102,7 +101,7 @@ void init_tui(sqlite3 *db){
                 menu_driver(current_menu -> menu, REQ_UP_ITEM);
 
                 if (current_focus_idx == 2){
-                    show_task_details(task_details_win, (Task *)item_userptr(current_item(current_menu -> menu)));
+                    // show_task_details(task_details_win, (Task *)item_userptr(current_item(current_menu -> menu)));
                 }
 
                 break;
@@ -111,16 +110,48 @@ void init_tui(sqlite3 *db){
                 menu_driver(current_menu -> menu, REQ_DOWN_ITEM);
 
                 if (current_focus_idx == 2){
-                    show_task_details(task_details_win, (Task *)item_userptr(current_item(current_menu -> menu)));
+                    // show_task_details(task_details_win, (Task *)item_userptr(current_item(current_menu -> menu)));
                 }
 
                 break;
 
-            case 10:
-				clrtoeol();
-				mvprintw(src_height-3, 1, "Item selected is : %s", item_name(current_item(current_menu -> menu)));
+            case 10: {
+                    int idx = current_focus_idx;
+                    const char *sel = item_name(current_item(current_menu->menu));
+
+                    if (idx == 0){
+                        const char *where;
+                        if      (strcmp(sel, "All")      == 0) where = "1=1";
+                        else if (strcmp(sel, "Today")    == 0) where = "date(due_date, 'unixepoch')=date('now')";
+                        else if (strcmp(sel, "Tomorrow") == 0) where = "date(due_date, 'unixepoch')=date('now','+1 day')";
+                        else if (strcmp(sel, "Over-Due") == 0) where = "date(due_date, 'unixepoch')<date('now')";
+                        else where = "t.status=1";
+
+                        reload_tasks_menu(db, &tasks_pane, where);
+
+                        current_focus_idx = 2;
+                        for (int i = 0; i < num_focusable_menus; i++){ 
+                            focusable_menus[i].is_focused = 0;
+                        }
+                        focusable_menus[2].is_focused = 1;
+                        update_window_focus();
+
+                    } else if (current_focus_idx == 1){
+                        char where[256];
+                        snprintf(where, sizeof(where),"tg.name='%s'", sel);
+                        reload_tasks_menu(db, &tasks_pane, where);
+                        current_focus_idx = 2;
+                        for (int i = 0; i < num_focusable_menus; i++){ 
+                            focusable_menus[i].is_focused = 0;
+                        }
+                        focusable_menus[2].is_focused = 1;
+                        update_window_focus();
+                    }
+				// clrtoeol();
+				// mvprintw(src_height-3, 1, "Item selected is : %s", item_name(current_item(current_menu -> menu)));
 				pos_menu_cursor(current_menu -> menu);
 				break;
+            }
             case 'q':
                 cleanup_menus();
                 destroy_win(top_bar);
@@ -278,42 +309,35 @@ void print_in_middle(WINDOW *win, int starty, int startx, int src_width, char *s
 
 void reload_tasks_menu(sqlite3 *db, TasksPane *tasks_pane, const char *where_clause){
 
-    ITEM **old_items = (ITEM **)menu_items(tasks_pane->menu);
-    int old_item_count = tasks_pane->tasks_struct.task_count;
+    int window_height = src_height - 6;
+    int window_width = (src_width - SIDE_BAR_WIDTH) / 2;
+
     unpost_menu(tasks_pane->menu);
-    free_menu(tasks_pane->menu);
-    for(int i = 0; i < old_item_count; i++){
+    // free_menu(tasks_pane->menu);
+    ITEM **old_items = (ITEM **)menu_items(tasks_pane->menu);
+    int old_count = tasks_pane->tasks_struct.task_count;
+
+    load_tasks_fillterd(db, &tasks_pane->tasks_struct, where_clause);
+
+    int tasks_count = tasks_pane->tasks_struct.task_count;
+    tasks_pane->items = calloc(tasks_count+1, sizeof(*tasks_pane->items));
+
+    for (int i = 0; i < tasks_count; i++){
+        tasks_pane->items[i] = new_item(tasks_pane->tasks_struct.task_list[i].title, NULL);
+        set_item_userptr(tasks_pane->items[i], &tasks_pane->tasks_struct.task_list[i]);
+    }
+    tasks_pane->items[tasks_count] = NULL;
+
+    // tasks_pane->menu = new_menu((ITEM **)tasks_pane->items);
+    set_menu_items(tasks_pane->menu, tasks_pane->items);
+
+    for(int i = 0; i < old_count; i++){
         free_item(old_items[i]);
     }
     free(old_items);
 
-    load_tasks_fillterd(db, &tasks_pane->tasks_struct, where_clause);
+    werase(tasks_pane->win);
 
-    int tasks_count = tasks_pane->tasks_struct.task_count+1;
-    ITEM **new_items = calloc(tasks_count+1, sizeof(ITEM*));
-
-    for (int i = 0; i < tasks_count; i++){
-        new_items[i] = new_item(tasks_pane->tasks_struct.task_list[i].title, NULL);
-        set_item_userptr(new_items[i], &tasks_pane->tasks_struct.task_list[i]);
-    }
-    new_items[tasks_count] = NULL;
-
-    free(tasks_pane->items);
-    tasks_pane->items = new_items;
-
-    int window_height = src_height - 6;
-    int window_width = (src_width - SIDE_BAR_WIDTH) / 2;
-    int submenu_height = window_height - 6;
-    int submenu_width = window_width - 4;
-
-    tasks_pane->menu = new_menu((ITEM **)tasks_pane->items);
-    tasks_pane->win = create_newwin(window_height, window_width, 3, SIDE_BAR_WIDTH);
-    keypad(tasks_pane->win, TRUE);
-    
-    set_menu_win(tasks_pane->menu, tasks_pane->win);
-    set_menu_sub(tasks_pane->menu, derwin(tasks_pane->win, submenu_height, submenu_width, 4, 2));
-    set_menu_format(tasks_pane->menu, 45, 1);
-    set_menu_mark(tasks_pane->menu, " * ");
     box(tasks_pane->win, 0, 0);
 
     print_in_middle(tasks_pane->win, 1, 0, window_width, "TASKS");
@@ -423,6 +447,7 @@ void create_tags_menu(sqlite3 *db, ITEM ***tags_items, MENU **tags_menu, WINDOW 
 }
 
 void create_tasks_menu(sqlite3 *db, TasksPane *tasks_pane) {
+
     load_tasks(db, &tasks_pane->tasks_struct);
 
     tasks_pane->items = (ITEM **)calloc(tasks_pane->tasks_struct.task_count + 1, sizeof(ITEM *));
@@ -437,8 +462,8 @@ void create_tasks_menu(sqlite3 *db, TasksPane *tasks_pane) {
     int submenu_height = window_height - 6;
     int submenu_width = window_width - 4;
 
-    tasks_pane->menu = new_menu((ITEM **)tasks_pane->items);
     tasks_pane->win = create_newwin(window_height, window_width, 3, SIDE_BAR_WIDTH);
+    tasks_pane->menu = new_menu((ITEM **)tasks_pane->items);
     keypad(tasks_pane->win, TRUE);
     
     set_menu_win(tasks_pane->menu, tasks_pane->win);
