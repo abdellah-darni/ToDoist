@@ -101,7 +101,7 @@ void init_tui(sqlite3 *db){
                 menu_driver(current_menu -> menu, REQ_UP_ITEM);
 
                 if (current_focus_idx == 2){
-                    // show_task_details(task_details_win, (Task *)item_userptr(current_item(current_menu -> menu)));
+                    show_task_details(task_details_win, (Task *)item_userptr(current_item(current_menu -> menu)));
                 }
 
                 break;
@@ -110,16 +110,15 @@ void init_tui(sqlite3 *db){
                 menu_driver(current_menu -> menu, REQ_DOWN_ITEM);
 
                 if (current_focus_idx == 2){
-                    // show_task_details(task_details_win, (Task *)item_userptr(current_item(current_menu -> menu)));
+                    show_task_details(task_details_win, (Task *)item_userptr(current_item(current_menu -> menu)));
                 }
 
                 break;
 
             case 10: {
-                    int idx = current_focus_idx;
                     const char *sel = item_name(current_item(current_menu->menu));
 
-                    if (idx == 0){
+                    if (current_focus_idx == 0){
                         const char *where;
                         if      (strcmp(sel, "All")      == 0) where = "1=1";
                         else if (strcmp(sel, "Today")    == 0) where = "date(due_date, 'unixepoch')=date('now')";
@@ -140,17 +139,18 @@ void init_tui(sqlite3 *db){
                         char where[256];
                         snprintf(where, sizeof(where),"tg.name='%s'", sel);
                         reload_tasks_menu(db, &tasks_pane, where);
+                        
                         current_focus_idx = 2;
                         for (int i = 0; i < num_focusable_menus; i++){ 
                             focusable_menus[i].is_focused = 0;
                         }
                         focusable_menus[2].is_focused = 1;
                         update_window_focus();
+
                     }
-				// clrtoeol();
-				// mvprintw(src_height-3, 1, "Item selected is : %s", item_name(current_item(current_menu -> menu)));
-				pos_menu_cursor(current_menu -> menu);
-				break;
+                
+                pos_menu_cursor(current_menu -> menu);
+                break;
             }
             case 'q':
                 cleanup_menus();
@@ -250,9 +250,9 @@ void update_window_focus(){
             box(menu_item -> win, 0, 0);
             wattroff(menu_item -> win, A_BOLD);
         }else{
-            set_menu_fore(menu_item -> menu, A_DIM);
+            set_menu_fore(menu_item -> menu, A_REVERSE | A_DIM);
             set_menu_back(menu_item -> menu, A_DIM);
-            set_menu_mark(menu_item -> menu, "   ");
+            set_menu_mark(menu_item -> menu, " * ");
 
             box(menu_item -> win, 0, 0);
         }
