@@ -32,6 +32,8 @@ int load_tasks(sqlite3 *db, Tasks *tasks);
 
 int load_tasks_fillterd(sqlite3 *db, Tasks *tasks, const char *where_close);
 
+void free_task_field(Task *task);
+void free_tasks_list(Tasks *tasks);
 
 
 #endif

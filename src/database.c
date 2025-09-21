@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -195,11 +196,8 @@ int load_tasks(sqlite3 *db, Tasks *tasks){
 
 int load_tasks_fillterd(sqlite3 *db, Tasks *tasks, const char *where_close){
     sqlite3_stmt *stmt;
-    int db_tasks_count = 0;
+    int db_tasks_count = -1;
     int rc;
-
-    tasks->task_list = NULL;
-    tasks->task_count = 0;
 
     char sql[512];
 
@@ -256,8 +254,10 @@ int load_tasks_fillterd(sqlite3 *db, Tasks *tasks, const char *where_close){
     while((rc = sqlite3_step(stmt)) == SQLITE_ROW){
         Task tmp;
         tmp.id          = sqlite3_column_int(stmt, 0);
-        tmp.title       = strdup((char *)sqlite3_column_text(stmt, 1));
-        tmp.desc        = strdup((char *)sqlite3_column_text(stmt, 2));
+        const unsigned char *t = sqlite3_column_text(stmt, 1);
+        tmp.title       = t ? strdup((const char *)t) : NULL;
+        const unsigned char *d = sqlite3_column_text(stmt, 2);
+        tmp.desc        = d ? strdup((const char *)d) : NULL;
         tmp.status      = sqlite3_column_int(stmt, 3);
         tmp.due_date    = sqlite3_column_int(stmt, 4);
         tmp.created_at  = sqlite3_column_int(stmt, 5);
@@ -281,4 +281,28 @@ int load_tasks_fillterd(sqlite3 *db, Tasks *tasks, const char *where_close){
 
     return 0;
    
+}
+
+void free_task_field(Task *task){
+    if (!task) return;
+
+    free(task->title);
+    task->title = NULL;
+    free(task->desc);
+    task->desc = NULL;
+    free(task->tag);
+    task->tag = NULL;
+}
+
+void free_tasks_list(Tasks *tasks){
+    if (!tasks) return;
+
+    if (tasks->task_list){
+        for (int i = 0; i < tasks->task_count; i++){
+            free_task_field(&tasks->task_list[i]);
+        }
+        free(tasks->task_list);
+        tasks->task_list = NULL;
+    }
+    tasks->task_count = 0;
 }
