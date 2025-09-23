@@ -194,7 +194,10 @@ int load_tasks(sqlite3 *db, Tasks *tasks){
     return 0;
 }
 
-int load_tasks_fillterd(sqlite3 *db, Tasks *tasks, const char *where_close){
+int load_tasks_fillterd(sqlite3 *db, Tasks *tasks, const char *where_clause){
+
+    if (!db || !tasks || !where_clause) return -1; //TODO : teat the -1 return in the tui side
+
     sqlite3_stmt *stmt;
     int db_tasks_count = -1;
     int rc;
@@ -205,11 +208,12 @@ int load_tasks_fillterd(sqlite3 *db, Tasks *tasks, const char *where_close){
                                 "FROM tasks AS t "
                                 "LEFT JOIN task_tags AS tt ON tt.task_id = t.id "
                                 "LEFT JOIN tags AS tg ON tg.id = tt.tag_id "
-                                "WHERE %s ;", where_close);
+                                "WHERE %s ;", where_clause);
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
+        free_tasks_list(tasks);
         return -1;
     }
 
@@ -220,13 +224,21 @@ int load_tasks_fillterd(sqlite3 *db, Tasks *tasks, const char *where_close){
     sqlite3_finalize(stmt);
     stmt = NULL;
 
-    Task *tmp_list = realloc(tasks->task_list, db_tasks_count * sizeof(Task));
-    if (!tmp_list){
-        fprintf(stderr, "Failed to allocate memory for a tasks\n");
+    if (db_tasks_count == 0){
+        free_tasks_list(tasks);
+        return 0;
+    } else if (db_tasks_count == -1){
+        free_tasks_list(tasks);
         return -1;
     }
 
-    tasks->task_list = tmp_list;
+    Task *new_list = calloc((size_t)db_tasks_count, sizeof(Task));
+
+    if (!new_list){
+        fprintf(stderr, "Failed to allocate memory for a tasks\n");
+        free_tasks_list(tasks);
+        return -1;
+    }
 
     snprintf(sql, sizeof(sql), "SELECT "
                                     "t.id, "
@@ -241,11 +253,14 @@ int load_tasks_fillterd(sqlite3 *db, Tasks *tasks, const char *where_close){
                                 "  LEFT JOIN task_tags AS tt ON tt.task_id = t.id "
                                 "  LEFT JOIN tags AS tg ON tg.id = tt.tag_id "
                                 "  WHERE %s "
-                                "  GROUP BY t.id;", where_close);
+                                "  GROUP BY t.id;", where_clause);
     
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+
     if (rc != SQLITE_OK) {
         fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
+        free(new_list);
+        free_tasks_list(tasks);
         return -1;
     }
 
@@ -266,17 +281,25 @@ int load_tasks_fillterd(sqlite3 *db, Tasks *tasks, const char *where_close){
         const unsigned char *tagtxt = sqlite3_column_text(stmt, 7);
         tmp.tag = tagtxt ? strdup((const char*)tagtxt) : NULL;
 
-        tasks->task_list[i++] = tmp;
+        new_list[i++] = tmp;
     }
 
     if (rc != SQLITE_DONE) {
         fprintf(stderr, "Error iterating tasks: %s\n", sqlite3_errmsg(db));
+        for (int j = 0; j < i; j++){
+            free_task_field(&new_list[j]);
+        }
+        free(new_list);
+        free_tasks_list(tasks);
         sqlite3_finalize(stmt);
         return -1;
     }
 
     sqlite3_finalize(stmt);
+    stmt = NULL;
 
+    free_tasks_list(tasks);
+    tasks->task_list = new_list;
     tasks->task_count = db_tasks_count;
 
     return 0;
