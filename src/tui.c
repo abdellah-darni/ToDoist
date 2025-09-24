@@ -313,28 +313,12 @@ void reload_tasks_menu(sqlite3 *db, TasksPane *tasks_pane, const char *where_cla
     int window_width = (src_width - SIDE_BAR_WIDTH) / 2;
 
     unpost_menu(tasks_pane->menu);
-    // free_menu(tasks_pane->menu);
+
     ITEM **old_items = (ITEM **)menu_items(tasks_pane->menu);
     int old_count = tasks_pane->tasks_struct.task_count;
 
-    load_tasks_fillterd(db, &tasks_pane->tasks_struct, where_clause);
-
+    int loading_response = load_tasks_fillterd(db, &tasks_pane->tasks_struct, where_clause);
     int tasks_count = tasks_pane->tasks_struct.task_count;
-    tasks_pane->items = calloc(tasks_count+1, sizeof(*tasks_pane->items));
-
-    for (int i = 0; i < tasks_count; i++){
-        tasks_pane->items[i] = new_item(tasks_pane->tasks_struct.task_list[i].title, NULL);
-        set_item_userptr(tasks_pane->items[i], &tasks_pane->tasks_struct.task_list[i]);
-    }
-    tasks_pane->items[tasks_count] = NULL;
-
-    // tasks_pane->menu = new_menu((ITEM **)tasks_pane->items);
-    set_menu_items(tasks_pane->menu, tasks_pane->items);
-
-    for(int i = 0; i < old_count; i++){
-        free_item(old_items[i]);
-    }
-    free(old_items);
 
     werase(tasks_pane->win);
 
@@ -345,11 +329,62 @@ void reload_tasks_menu(sqlite3 *db, TasksPane *tasks_pane, const char *where_cla
     mvwhline(tasks_pane->win, 2, 1, ACS_HLINE, window_width - 2);
     mvwaddch(tasks_pane->win, 2, window_width - 1, ACS_RTEE);
 
+    if (loading_response == -1){
+
+        tasks_pane->items = calloc(2, sizeof(*tasks_pane->items));
+        tasks_pane->items[0] = new_item("Unable to load tasks from database", NULL);
+        tasks_pane->items[1] = NULL;
+
+        set_menu_items(tasks_pane->menu, tasks_pane->items);
+
+    } else if (loading_response == 0){
+
+        tasks_pane->items = calloc(2, sizeof(*tasks_pane->items));
+
+
+        
+    } else {
+
+            tasks_pane->items = calloc(tasks_count+1, sizeof(*tasks_pane->items));
+
+            for (int i = 0; i < tasks_count; i++){
+                tasks_pane->items[i] = new_item(tasks_pane->tasks_struct.task_list[i].title, NULL);
+                set_item_userptr(tasks_pane->items[i], &tasks_pane->tasks_struct.task_list[i]);
+            }
+            tasks_pane->items[tasks_count] = NULL;
+            
+            set_menu_items(tasks_pane->menu, tasks_pane->items);
+    }
+
+    
+
+
+    for(int i = 0; i < old_count; i++){
+        free_item(old_items[i]);
+    }
+    free(old_items);
+
+
+
     post_menu(tasks_pane->menu);
     wrefresh(tasks_pane->win);
 
 }
 
+
+void create_no_tasks_message(char *buffer, size_t buffer_size, const char *where_clause) {
+    if (!where_clause || strcmp(where_clause, "1=1") ){
+        snprintf(buffer, buffer_size, "No tasks found");
+    } else if (strstr(where_clause, "date")){
+        if (strstr(where_clause, "date(due_date, 'unixepoch')=date('now')")){
+            snprintf(buffer, buffer_size, "No tasks for today");
+        } else if (strstr(where_clause, "date(due_date, 'unixepoch')=date('now','+1 day')")){
+            snprintf(buffer, buffer_size, "No tasks for tomorow");
+        } else {
+            snprintf(buffer, buffer_size, "No over-due tasks");
+        }
+    }
+}
 
 
 void show_task_details(WINDOW *win ,Task *t) {
