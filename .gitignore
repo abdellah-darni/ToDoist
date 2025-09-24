@@ -1,6 +1,7 @@
 #build artifacts
 build/
 bin/
+logs/
 
 *~
 

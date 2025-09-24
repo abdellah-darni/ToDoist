@@ -1,5 +1,3 @@
-#Makefile Todoist
-
 CC ?= gcc
 TARGET := todoist
 
@@ -10,6 +8,7 @@ SRC_DIR   := src
 OBJ_DIR   := build
 BIN_DIR   := bin
 DATA_DIR  := data
+LOG_DIR   := logs
 INCLUDE_DIR := include
 
 SRCS := $(wildcard $(SRC_DIR)/*.c)
@@ -39,11 +38,11 @@ ASAN_LDFLAGS := -fsanitize=address
 # Linker flags
 LDFLAGS ?=
 
-.PHONY: all debug release asan clean clean-all run gdb lldb valgrind init_db help print-srcs print-objs print-deps
+.PHONY: all debug release asan run-asan clean clean-all run gdb gdb-report lldb lldb-report valgrind init_db help print-srcs print-objs print-deps
 
 # Default target
 all: $(TARGET_PATH)
-	@printf "Built %s version: %s ""$(BUILD_TYPE)" "$(TARGET_PATH)"
+	@printf "Built %s version: %s\n" "$(BUILD_TYPE)" "$(TARGET_PATH)"
 
 
 $(TARGET_PATH): $(OBJS) | $(BIN_DIR)
@@ -54,6 +53,7 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR) $(DATA_DIR)
 	@echo "Compiling $<..."
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# Directory creation rules
 $(OBJ_DIR):
 	@echo "Creating build directory..."
 	@mkdir -p $(OBJ_DIR)
@@ -66,6 +66,10 @@ $(BIN_DIR):
 	@echo "Creating bin directory..."
 	@mkdir -p $(BIN_DIR)
 
+$(LOG_DIR):
+	echo "Creating logs directory..."
+	@mkdir -p $(LOG_DIR)
+
 
 debug:
 	@echo "Building debug version..."
@@ -75,32 +79,45 @@ release:
 	@echo "Building release version..."
 	$(MAKE) DEBUG=0 clean all
 
-asan: clean
-	@echo "Building with AddressSanitizer..."
-	$(MAKE) DEBUG=1 CFLAGS="$(ASAN_CFLAGS)" LDFLAGS="$(ASAN_LDFLAGS)" all
-	@echo ""
-	@echo "AddressSanitizer build complete."
-	@echo "Run with: ./$(TARGET_PATH) $(ARGS)"
-
 run: all
 	@echo "Running $(TARGET_PATH) $(ARGS)"
 	@echo "----------------------------------------"
 	./$(TARGET_PATH) $(ARGS)
 
-# Debuggers
+# Debugging and Sanitizing Tools
+asan: clean
+	@echo "Building with AddressSanitizer..."
+	$(MAKE) DEBUG=1 CFLAGS="$(ASAN_CFLAGS)" LDFLAGS="$(ASAN_LDFLAGS)" all
+	@echo ""
+	@echo "AddressSanitizer build complete."
+	@echo "Run with 'make run-asan' to log errors to $(LOG_DIR)/asan.log"
+
+run-asan: asan | $(LOG_DIR)
+	@echo "Running with ASAN, logging to $(LOG_DIR)/asan.log..."
+	@echo "----------------------------------------"
+	ASAN_OPTIONS=log_path=$(LOG_DIR)/asan.log ./$(TARGET_PATH) $(ARGS)
+
 gdb: debug
-	@echo "Starting GDB debugger..."
+	@echo "Starting GDB debugger (interactive)..."
 	gdb --args ./$(TARGET_PATH) $(ARGS)
 
+gdb-report: debug | $(LOG_DIR)
+	@echo "Generating GDB crash report to $(LOG_DIR)/gdb-report.log..."
+	gdb -batch -ex 'run' -ex 'bt' --args ./$(TARGET_PATH) $(ARGS) > $(LOG_DIR)/gdb-report.log 2>&1
+
 lldb: debug
-	@echo "Starting LLDB debugger..."
+	@echo "Starting LLDB debugger (interactive)..."
 	lldb -- ./$(TARGET_PATH) $(ARGS)
 
-valgrind: debug
-	@echo "Running Valgrind memory analysis..."
-	@echo "This may take a while and produce lots of output..."
+lldb-report: debug | $(LOG_DIR)
+	@echo "Generating LLDB crash report to $(LOG_DIR)/lldb-report.log..."
+	lldb -b -o "run" -o "thread backtrace" -- ./$(TARGET_PATH) $(ARGS) > $(LOG_DIR)/lldb-report.log 2>&1
+
+valgrind: debug | $(LOG_DIR)
+	@echo "Running Valgrind, logging to $(LOG_DIR)/valgrind.log..."
+	@echo "This may take a while..."
 	@echo "----------------------------------------"
-	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --log-file=valgrind-log.txt ./$(TARGET_PATH) $(ARGS)
+	valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes --log-file=$(LOG_DIR)/valgrind.log ./$(TARGET_PATH) $(ARGS)
 
 # Database initialization/reset
 init_db: | $(DATA_DIR)
@@ -120,8 +137,8 @@ init_db: | $(DATA_DIR)
 
 # Clean up
 clean:
-	@echo "Cleaning build artifacts..."
-	rm -rf $(OBJ_DIR) $(BIN_DIR)
+	@echo "Cleaning build artifacts and logs..."
+	rm -rf $(OBJ_DIR) $(BIN_DIR) $(LOG_DIR)
 	@echo "Clean complete!"
 
 clean-all: clean
@@ -146,20 +163,23 @@ help:
 	@echo ""
 	@echo "Basic targets:"
 	@echo "  all        - Build the project (default)"
-	@echo "  debug      - Build debug version (with -g -O0 -DDEBUG)" 
+	@echo "  debug      - Build debug version (with -g -O0 -DDEBUG)"
 	@echo "  release    - Build release version (with -O2 -DNDEBUG)"
-	@echo "  clean      - Remove build artifacts"
-	@echo "  clean-all  - Remove build artifacts AND database"
+	@echo "  clean      - Remove build artifacts and logs"
+	@echo "  clean-all  - Remove build artifacts, logs, AND database"
 	@echo ""
 	@echo "Execution:"
 	@echo "  run        - Build and run the program"
 	@echo "  run ARGS='...' - Run with arguments"
 	@echo ""
-	@echo "Debugging tools:"
-	@echo "  asan       - Build with AddressSanitizer"
-	@echo "  gdb        - Build debug version and run in GDB"
-	@echo "  lldb       - Build debug version and run in LLDB"
-	@echo "  valgrind   - Build debug version and run in Valgrind"
+	@echo "Debugging & Reporting:"
+	@echo "  asan         - Build with AddressSanitizer"
+	@echo "  run-asan     - Run ASAN build, logging errors to logs/asan.log"
+	@echo "  gdb          - Run in GDB (interactive session)"
+	@echo "  gdb-report   - Generate a GDB crash report to logs/gdb-report.log"
+	@echo "  lldb         - Run in LLDB (interactive session)"
+	@echo "  lldb-report  - Generate an LLDB crash report to logs/lldb-report.log"
+	@echo "  valgrind     - Run Valgrind, logging memory errors to logs/valgrind.log"
 	@echo ""
 	@echo "Database:"
 	@echo "  init_db    - Initialize/reset the database"
