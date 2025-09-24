@@ -336,34 +336,50 @@ void reload_tasks_menu(sqlite3 *db, TasksPane *tasks_pane, const char *where_cla
         tasks_pane->items[1] = NULL;
 
         set_menu_items(tasks_pane->menu, tasks_pane->items);
+        item_opts_off(tasks_pane->items[0], O_SELECTABLE);
 
-    } else if (loading_response == 0){
+        mvwprintw(tasks_pane->win, 4, 2, "Error: Unable to load tasks from database");
+        mvwprintw(tasks_pane->win, 5, 2, "Please check database connection");
+
+    } else if (tasks_count == 0){
 
         tasks_pane->items = calloc(2, sizeof(*tasks_pane->items));
 
+        char no_tasks_msg[256];
+        create_no_tasks_message(no_tasks_msg, sizeof(no_tasks_msg), where_clause);
+
+        tasks_pane->items[0] = new_item(no_tasks_msg, NULL);
+        tasks_pane->items[1] = NULL;
+
+        set_menu_items(tasks_pane->menu, tasks_pane->items);
+        item_opts_off(tasks_pane->items[0], O_SELECTABLE);
+
+        mvwprintw(tasks_pane->win, 4, 2, "%s", no_tasks_msg);
 
         
     } else {
 
-            tasks_pane->items = calloc(tasks_count+1, sizeof(*tasks_pane->items));
+        tasks_pane->items = calloc(tasks_count+1, sizeof(*tasks_pane->items));
 
-            for (int i = 0; i < tasks_count; i++){
-                tasks_pane->items[i] = new_item(tasks_pane->tasks_struct.task_list[i].title, NULL);
-                set_item_userptr(tasks_pane->items[i], &tasks_pane->tasks_struct.task_list[i]);
-            }
-            tasks_pane->items[tasks_count] = NULL;
-            
-            set_menu_items(tasks_pane->menu, tasks_pane->items);
+        for (int i = 0; i < tasks_count; i++){
+            tasks_pane->items[i] = new_item(tasks_pane->tasks_struct.task_list[i].title, NULL);
+            set_item_userptr(tasks_pane->items[i], &tasks_pane->tasks_struct.task_list[i]);
+        }
+        tasks_pane->items[tasks_count] = NULL;
+        
+        set_menu_items(tasks_pane->menu, tasks_pane->items);
     }
 
     
 
-
-    for(int i = 0; i < old_count; i++){
-        free_item(old_items[i]);
+    if (old_items){
+        for(int i = 0; i < old_count; i++){
+            if (old_items[i]){
+                free_item(old_items[i]);
+            }
+        }
+        free(old_items);
     }
-    free(old_items);
-
 
 
     post_menu(tasks_pane->menu);
@@ -432,7 +448,7 @@ void create_no_tasks_message(char *buffer, size_t buffer_size, const char *where
     } else {
 
         snprintf(buffer, buffer_size, "No tasks match current filter");
-        
+
     }
 }
 

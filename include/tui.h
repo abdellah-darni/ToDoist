@@ -40,5 +40,6 @@ WINDOW* create_task_details_window();
 
 void create_tasks_menu_test(TasksPane *tasks_pane);
 void reload_tasks_menu(sqlite3 *db, TasksPane *tasks_pane, const char *where_clause);
+void create_no_tasks_message(char *buffer, size_t buffer_size, const char *where_clause);
 
 #endif
