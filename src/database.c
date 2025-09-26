@@ -196,7 +196,7 @@ int load_tasks(sqlite3 *db, Tasks *tasks){
 
 int load_tasks_fillterd(sqlite3 *db, Tasks *tasks, const char *where_clause){
 
-    if (!db || !tasks || !where_clause) return -1; //TODO : teat the -1 return in the tui side
+    if (!db || !tasks || !where_clause) return -1;
 
     sqlite3_stmt *stmt;
     int db_tasks_count = -1;
@@ -225,8 +225,18 @@ int load_tasks_fillterd(sqlite3 *db, Tasks *tasks, const char *where_clause){
     stmt = NULL;
 
     if (db_tasks_count == 0){
+        
+        char msg[256];
+        create_no_tasks_message_db(msg, sizeof(msg), where_clause);
+
+        Task *error_task = task_placeholder(msg, msg);
+
         free_tasks_list(tasks);
+        tasks->task_list = error_task;
+        tasks->task_count = 1;
+
         return 0;
+
     } else if (db_tasks_count == -1){
         free_tasks_list(tasks);
         return -1;
@@ -328,4 +338,90 @@ void free_tasks_list(Tasks *tasks){
         tasks->task_list = NULL;
     }
     tasks->task_count = 0;
+}
+
+
+void create_no_tasks_message(char *buffer, size_t buffer_size, const char *where_clause) {
+
+    if (!where_clause || strcmp(where_clause, "1=1") == 0 ){
+
+        snprintf(buffer, buffer_size, "No tasks found");
+
+    } else if (strstr(where_clause, "date")){
+
+        if (strstr(where_clause, "date(due_date, 'unixepoch')=date('now')")){
+
+            snprintf(buffer, buffer_size, "No tasks for today");
+
+        } else if (strstr(where_clause, "date(due_date, 'unixepoch')=date('now','+1 day')")){
+
+            snprintf(buffer, buffer_size, "No tasks for tomorow");
+
+        } else {
+
+            snprintf(buffer, buffer_size, "No over-due tasks");
+
+        }
+    } else if (strstr(where_clause, "t.status=1")){
+
+        snprintf(buffer, buffer_size, "No completed tasks");
+
+    } else if (strstr(where_clause, "tg.name")){
+
+        char *tag_start = strstr(where_clause, "'");
+        
+        if (tag_start){
+        
+            tag_start++;
+            char *tag_end = strchr(tag_start, '\'');
+
+            if (tag_end){
+
+                int tag_len = tag_end - tag_start;
+
+                if (tag_len < 50){
+
+                    snprintf(buffer, buffer_size, "No tasks with tag %.*s", tag_len, tag_start);
+
+                } else {
+
+                    snprintf(buffer, buffer_size, "No tasks with the selected tag");
+
+                }
+            } else {
+
+                snprintf(buffer, buffer_size, "No tasks with the selected tag");
+
+            }
+        } else {
+
+            snprintf(buffer, buffer_size, "No tasks with the selected tag");
+
+        }
+    } else {
+
+        snprintf(buffer, buffer_size, "No tasks match current filter");
+
+    }
+}
+
+
+Task * task_placeholder(const char *title, const char *desc){
+
+    Task *error_task = calloc(1, sizeof(Task));
+
+    if (!error_task){
+        return NULL;
+    }
+
+    error_task->id = -1;
+    error_task->title = title ? strdup(title) : NULL;
+    error_task->desc = desc ? strdup(desc) : NULL;
+    error_task->status = 0;
+    error_task->created_at = 0;
+    error_task->updated_at = 0;
+    error_task->due_date = 0;
+    error_task->tag = NULL;
+
+    return error_task;
 }
