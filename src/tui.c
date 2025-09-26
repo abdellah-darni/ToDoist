@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <time.h>
 #include <string.h>
@@ -332,8 +333,13 @@ void reload_tasks_menu(sqlite3 *db, TasksPane *tasks_pane, const char *where_cla
     if (loading_response == -1){
 
         tasks_pane->items = calloc(2, sizeof(*tasks_pane->items));
+        // ToDo : check for mem allocation errors and set a fall back  
+
         tasks_pane->items[0] = new_item("Unable to load tasks from database", NULL);
         tasks_pane->items[1] = NULL;
+
+        Task no_task = {.id = -1, .title = "NO TASKS"};
+        set_item_userptr(tasks_pane->items[0], &no_task);
 
         set_menu_items(tasks_pane->menu, tasks_pane->items);
         item_opts_off(tasks_pane->items[0], O_SELECTABLE);
@@ -344,22 +350,30 @@ void reload_tasks_menu(sqlite3 *db, TasksPane *tasks_pane, const char *where_cla
     } else if (tasks_count == 0){
 
         tasks_pane->items = calloc(2, sizeof(*tasks_pane->items));
+        // ToDo : check for mem allocation errors and set a fall back  
+
 
         char no_tasks_msg[256];
         create_no_tasks_message(no_tasks_msg, sizeof(no_tasks_msg), where_clause);
-
-        tasks_pane->items[0] = new_item(no_tasks_msg, NULL);
+        char *msg = strdup(no_tasks_msg);
+        // ToDo : check for mem allocation errors and set a fall back  
+        tasks_pane->items[0] = new_item(msg, NULL);
         tasks_pane->items[1] = NULL;
+
+        Task no_task = {.id = -1, .title = "NO TASKS"};
+        set_item_userptr(tasks_pane->items[0], &no_task);
 
         set_menu_items(tasks_pane->menu, tasks_pane->items);
         item_opts_off(tasks_pane->items[0], O_SELECTABLE);
 
-        mvwprintw(tasks_pane->win, 4, 2, "%s", no_tasks_msg);
+        mvwprintw(tasks_pane->win, 4, 2, "%s", msg);
 
         
     } else {
 
         tasks_pane->items = calloc(tasks_count+1, sizeof(*tasks_pane->items));
+        // ToDo : check for mem allocation errors and set a fall back  
+
 
         for (int i = 0; i < tasks_count; i++){
             tasks_pane->items[i] = new_item(tasks_pane->tasks_struct.task_list[i].title, NULL);
@@ -390,7 +404,7 @@ void reload_tasks_menu(sqlite3 *db, TasksPane *tasks_pane, const char *where_cla
 
 void create_no_tasks_message(char *buffer, size_t buffer_size, const char *where_clause) {
 
-    if (!where_clause || strcmp(where_clause, "1=1") ){
+    if (!where_clause || strcmp(where_clause, "1=1") == 0 ){
 
         snprintf(buffer, buffer_size, "No tasks found");
 
