@@ -227,7 +227,7 @@ int load_tasks_fillterd(sqlite3 *db, Tasks *tasks, const char *where_clause){
     if (db_tasks_count == 0){
         
         char msg[256];
-        create_no_tasks_message_db(msg, sizeof(msg), where_clause);
+        create_no_tasks_message(msg, sizeof(msg), where_clause);
 
         Task *error_task = task_placeholder(msg, msg);
 
@@ -344,64 +344,37 @@ void free_tasks_list(Tasks *tasks){
 void create_no_tasks_message(char *buffer, size_t buffer_size, const char *where_clause) {
 
     if (!where_clause || strcmp(where_clause, "1=1") == 0 ){
-
         snprintf(buffer, buffer_size, "No tasks found");
-
     } else if (strstr(where_clause, "date")){
-
         if (strstr(where_clause, "date(due_date, 'unixepoch')=date('now')")){
-
             snprintf(buffer, buffer_size, "No tasks for today");
-
         } else if (strstr(where_clause, "date(due_date, 'unixepoch')=date('now','+1 day')")){
-
             snprintf(buffer, buffer_size, "No tasks for tomorow");
-
         } else {
-
             snprintf(buffer, buffer_size, "No over-due tasks");
-
         }
     } else if (strstr(where_clause, "t.status=1")){
-
         snprintf(buffer, buffer_size, "No completed tasks");
-
     } else if (strstr(where_clause, "tg.name")){
-
         char *tag_start = strstr(where_clause, "'");
-        
         if (tag_start){
-        
             tag_start++;
             char *tag_end = strchr(tag_start, '\'');
-
             if (tag_end){
-
                 int tag_len = tag_end - tag_start;
-
                 if (tag_len < 50){
-
                     snprintf(buffer, buffer_size, "No tasks with tag %.*s", tag_len, tag_start);
-
                 } else {
-
                     snprintf(buffer, buffer_size, "No tasks with the selected tag");
-
                 }
             } else {
-
                 snprintf(buffer, buffer_size, "No tasks with the selected tag");
-
             }
         } else {
-
             snprintf(buffer, buffer_size, "No tasks with the selected tag");
-
         }
     } else {
-
         snprintf(buffer, buffer_size, "No tasks match current filter");
-
     }
 }
 
