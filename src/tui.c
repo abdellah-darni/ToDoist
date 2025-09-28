@@ -30,6 +30,9 @@ FocusableMenu *focusable_menus = NULL;
 int num_focusable_menus = 0;
 int current_focus_idx = 0;
 
+int selected_filter_index = 0;
+int selected_tag_index = -1; 
+
 int src_width, src_height;
 
 void init_tui(sqlite3 *db){
@@ -78,14 +81,14 @@ void init_tui(sqlite3 *db){
     add_focusable_window(tasks_pane.win, tasks_pane.menu);
 
     focusable_menus[0].is_focused = 1;
-    update_window_focus();
+    update_menu_highlighting();
 
 
     while((ch = getch())!='q'){
         update_time_top_bar(top_bar, 1, src_width);
 
         if (ch == 9){
-            switch_focus();
+            switch_focus(task_details_win);
             continue;
         }
 
@@ -95,23 +98,27 @@ void init_tui(sqlite3 *db){
         switch (c)
         {
             case 9:
-                switch_focus();
+                switch_focus(task_details_win);
                 continue;
 
             case KEY_UP:
-                menu_driver(current_menu -> menu, REQ_UP_ITEM);
+                if (current_menu->menu && item_count(current_menu->menu) > 0) {
+                    menu_driver(current_menu -> menu, REQ_UP_ITEM);
 
-                if (current_focus_idx == 2){
-                    show_task_details(task_details_win, (Task *)item_userptr(current_item(current_menu -> menu)));
+                    if (current_focus_idx == 2){
+                        show_task_details(task_details_win, (Task *)item_userptr(current_item(current_menu -> menu)));
+                    }
                 }
 
                 break;
 
             case KEY_DOWN:
-                menu_driver(current_menu -> menu, REQ_DOWN_ITEM);
+                if (current_menu->menu && item_count(current_menu->menu) > 0) {
+                    menu_driver(current_menu -> menu, REQ_DOWN_ITEM);
 
-                if (current_focus_idx == 2){
-                    show_task_details(task_details_win, (Task *)item_userptr(current_item(current_menu -> menu)));
+                    if (current_focus_idx == 2){
+                        show_task_details(task_details_win, (Task *)item_userptr(current_item(current_menu -> menu)));
+                    }
                 }
 
                 break;
@@ -129,26 +136,31 @@ void init_tui(sqlite3 *db){
 
                         reload_tasks_menu(db, &tasks_pane, where);
 
-                        current_focus_idx = 2;
                         for (int i = 0; i < num_focusable_menus; i++){ 
                             focusable_menus[i].is_focused = 0;
                         }
+
+                        current_focus_idx = 2;
                         focusable_menus[2].is_focused = 1;
-                        update_window_focus();
 
                     } else if (current_focus_idx == 1){
                         char where[256];
                         snprintf(where, sizeof(where),"tg.name='%s'", sel);
                         reload_tasks_menu(db, &tasks_pane, where);
                         
-                        current_focus_idx = 2;
+                        
                         for (int i = 0; i < num_focusable_menus; i++){ 
                             focusable_menus[i].is_focused = 0;
                         }
+
+                        current_focus_idx = 2;
                         focusable_menus[2].is_focused = 1;
-                        update_window_focus();
 
                     }
+
+                update_menu_highlighting();
+
+                //show_task_details(task_details_win, (Task *)item_userptr(current_item(current_menu->menu)));
                 
                 pos_menu_cursor(current_menu -> menu);
                 break;
@@ -238,38 +250,22 @@ void add_focusable_window(WINDOW *win, MENU *menu){
     focusable_menus[num_focusable_menus - 1].is_focused = 0;
 }
 
-void update_window_focus(){
-    for(int i = 0; i < num_focusable_menus; i++){
-        FocusableMenu *menu_item = &focusable_menus[i];
 
-        if(menu_item -> is_focused){
-            set_menu_fore(menu_item -> menu, A_REVERSE);
-            set_menu_back(menu_item -> menu, A_NORMAL);
-            set_menu_mark(menu_item -> menu, " * ");
-            
-            wattron(menu_item -> win, A_BOLD);
-            box(menu_item -> win, 0, 0);
-            wattroff(menu_item -> win, A_BOLD);
-        }else{
-            set_menu_fore(menu_item -> menu, A_REVERSE | A_DIM);
-            set_menu_back(menu_item -> menu, A_DIM);
-            set_menu_mark(menu_item -> menu, " * ");
-
-            box(menu_item -> win, 0, 0);
-        }
-        wrefresh(menu_item -> win);
-    }
-    refresh();
-}
-
-void switch_focus(){
+void switch_focus(WINDOW *task_details_win){
     if (num_focusable_menus <= 1) return;
 
     focusable_menus[current_focus_idx].is_focused = 0;
     current_focus_idx = (current_focus_idx + 1) % num_focusable_menus;
     focusable_menus[current_focus_idx].is_focused = 1;
 
-    update_window_focus();
+    update_menu_highlighting();
+
+    if (current_focus_idx == 2 && focusable_menus[2].menu){
+        ITEM *current = current_item(focusable_menus[2].menu);
+        if (current){
+            show_task_details(task_details_win, (Task *)item_userptr(current));
+        }
+    }
 }
 
 void cleanup_menus(){
@@ -356,7 +352,6 @@ void reload_tasks_menu(sqlite3 *db, TasksPane *tasks_pane, const char *where_cla
     wrefresh(tasks_pane->win);
 
 }
-
 
 
 void show_task_details(WINDOW *win ,Task *t) {
@@ -504,3 +499,29 @@ WINDOW* create_task_details_window() {
     wrefresh(task_details_win);
     return task_details_win;
 }
+
+
+void update_menu_highlighting(){
+    for (int i = 0; i < num_focusable_menus; i++){
+        FocusableMenu *menu_item = &focusable_menus[i];
+        if(menu_item -> is_focused){
+            set_menu_fore(menu_item -> menu,A_BOLD | A_REVERSE);
+            set_menu_back(menu_item -> menu, A_NORMAL);
+            set_menu_mark(menu_item -> menu, " * ");
+            
+            wattron(menu_item -> win, A_BOLD);
+            box(menu_item -> win, 0, 0);
+            wattroff(menu_item -> win, A_BOLD);
+        } else {
+
+            set_menu_fore(menu_item -> menu, A_DIM);
+            set_menu_back(menu_item -> menu, A_DIM);
+            set_menu_mark(menu_item -> menu, "   ");
+
+            box(menu_item -> win, 0, 0);
+        }
+        wrefresh(menu_item -> win);
+    }
+    refresh();
+}
+

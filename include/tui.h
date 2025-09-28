@@ -26,8 +26,8 @@ void add_focusable_window(WINDOW *win, MENU *menu);
 
 void print_in_middle(WINDOW *win, int starty, int startx, int width, char *string);
 
-void switch_focus();
-void update_window_focus();
+void switch_focus(WINDOW *task_details_win);
+
 void cleanup_menus();
 
 void show_task_details(WINDOW *win ,Task *t);
@@ -40,5 +40,6 @@ WINDOW* create_task_details_window();
 
 void create_tasks_menu_test(TasksPane *tasks_pane);
 void reload_tasks_menu(sqlite3 *db, TasksPane *tasks_pane, const char *where_clause);
+void update_menu_highlighting();
 
 #endif
