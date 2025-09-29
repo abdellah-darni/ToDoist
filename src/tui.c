@@ -124,43 +124,64 @@ void init_tui(sqlite3 *db){
                 break;
 
             case 10: {
-                    const char *sel = item_name(current_item(current_menu->menu));
+                ITEM *current_item_ptr = current_item(current_menu->menu);
+                if (!current_item_ptr) break;
+                
+                const char *sel = item_name(current_item_ptr);
 
-                    if (current_focus_idx == 0){
-                        const char *where;
-                        if      (strcmp(sel, "All")      == 0) where = "1=1";
-                        else if (strcmp(sel, "Today")    == 0) where = "date(due_date, 'unixepoch')=date('now')";
-                        else if (strcmp(sel, "Tomorrow") == 0) where = "date(due_date, 'unixepoch')=date('now','+1 day')";
-                        else if (strcmp(sel, "Over-Due") == 0) where = "date(due_date, 'unixepoch')<date('now')";
-                        else where = "t.status=1";
+                if (current_focus_idx == 0){ // Filter menu
+                    const char *where;
+                    int current_item_index = item_index(current_item_ptr);
+                    
+                    if      (strcmp(sel, "All")      == 0) where = "1=1";
+                    else if (strcmp(sel, "Today")    == 0) where = "date(due_date, 'unixepoch')=date('now')";
+                    else if (strcmp(sel, "Tomorrow") == 0) where = "date(due_date, 'unixepoch')=date('now','+1 day')";
+                    else if (strcmp(sel, "Over-Due") == 0) where = "date(due_date, 'unixepoch')<date('now')";
+                    else where = "t.status=1";
 
-                        reload_tasks_menu(db, &tasks_pane, where);
+                    mark_selected_filter(current_item_index);
+                    
+                    reload_tasks_menu(db, &tasks_pane, where);
 
-                        for (int i = 0; i < num_focusable_menus; i++){ 
-                            focusable_menus[i].is_focused = 0;
+                    // Switch focus to tasks menu
+                    for (int i = 0; i < num_focusable_menus; i++){ 
+                        focusable_menus[i].is_focused = 0;
+                    }
+                    current_focus_idx = 2;
+                    focusable_menus[2].is_focused = 1;
+                    update_menu_highlighting();
+
+                    // Show details of first task
+                    if (tasks_pane.menu && item_count(tasks_pane.menu) > 0) {
+                        ITEM *first_task = current_item(tasks_pane.menu);
+                        if (first_task) {
+                            show_task_details(task_details_win, (Task *)item_userptr(first_task));
                         }
-
-                        current_focus_idx = 2;
-                        focusable_menus[2].is_focused = 1;
-
-                    } else if (current_focus_idx == 1){
-                        char where[256];
-                        snprintf(where, sizeof(where),"tg.name='%s'", sel);
-                        reload_tasks_menu(db, &tasks_pane, where);
-                        
-                        
-                        for (int i = 0; i < num_focusable_menus; i++){ 
-                            focusable_menus[i].is_focused = 0;
-                        }
-
-                        current_focus_idx = 2;
-                        focusable_menus[2].is_focused = 1;
-
                     }
 
-                update_menu_highlighting();
+                } else if (current_focus_idx == 1){ // Tags menu
+                    int current_item_index = item_index(current_item_ptr);
+                    char where[256];
+                    snprintf(where, sizeof(where),"tg.name='%s'", sel);
+                    
+                    mark_selected_tag(current_item_index);
+                    
+                    reload_tasks_menu(db, &tasks_pane, where);
+                    
+                    for (int i = 0; i < num_focusable_menus; i++){ 
+                        focusable_menus[i].is_focused = 0;
+                    }
+                    current_focus_idx = 2;
+                    focusable_menus[2].is_focused = 1;
+                    update_menu_highlighting();
 
-                //show_task_details(task_details_win, (Task *)item_userptr(current_item(current_menu->menu)));
+                    if (tasks_pane.menu && item_count(tasks_pane.menu) > 0) {
+                        ITEM *first_task = current_item(tasks_pane.menu);
+                        if (first_task) {
+                            show_task_details(task_details_win, (Task *)item_userptr(first_task));
+                        }
+                    }
+                }
                 
                 pos_menu_cursor(current_menu -> menu);
                 break;
@@ -354,14 +375,25 @@ void reload_tasks_menu(sqlite3 *db, TasksPane *tasks_pane, const char *where_cla
 }
 
 
-void show_task_details(WINDOW *win ,Task *t) {
+void show_task_details(WINDOW *win, Task *t) {
+    if (!t) {
+        werase(win);
+        box(win, 0,0);
+        print_in_middle(win, 1, 0, (src_width-SIDE_BAR_WIDTH)/2, "Details");
+        mvwaddch(win, 2, 0, ACS_LTEE);
+        mvwhline(win, 2, 1, ACS_HLINE, ((src_width-SIDE_BAR_WIDTH)/2)-2);
+        mvwaddch(win, 2, ((src_width-SIDE_BAR_WIDTH)/2)-1, ACS_RTEE);
+        mvwprintw(win, 4, 2, "No task selected");
+        wrefresh(win);
+        return;
+    }
+
     werase(win);
     box(win, 0,0);
 
-
     mvwaddch(win, 2, 0, ACS_LTEE);
-	mvwhline(win, 2, 1, ACS_HLINE, ((src_width-SIDE_BAR_WIDTH)/2)-2);
-	mvwaddch(win, 2, ((src_width-SIDE_BAR_WIDTH)/2)-1, ACS_RTEE);
+    mvwhline(win, 2, 1, ACS_HLINE, ((src_width-SIDE_BAR_WIDTH)/2)-2);
+    mvwaddch(win, 2, ((src_width-SIDE_BAR_WIDTH)/2)-1, ACS_RTEE);
 
     mvwprintw(win, 3, 2, "ID:   %d", t->id);
     mvwprintw(win, 4, 2, "Title: %s", t->title);
@@ -501,27 +533,60 @@ WINDOW* create_task_details_window() {
 }
 
 
-void update_menu_highlighting(){
+void update_menu_highlighting(void){
     for (int i = 0; i < num_focusable_menus; i++){
         FocusableMenu *menu_item = &focusable_menus[i];
-        if(menu_item -> is_focused){
-            set_menu_fore(menu_item -> menu,A_BOLD | A_REVERSE);
-            set_menu_back(menu_item -> menu, A_NORMAL);
-            set_menu_mark(menu_item -> menu, " * ");
+        
+        if(menu_item->is_focused){
+            // Focused menu
+            set_menu_fore(menu_item->menu, A_REVERSE | A_BOLD);
+            set_menu_back(menu_item->menu, A_NORMAL);
+            set_menu_mark(menu_item->menu, " * ");
             
-            wattron(menu_item -> win, A_BOLD);
-            box(menu_item -> win, 0, 0);
-            wattroff(menu_item -> win, A_BOLD);
+            wattron(menu_item->win, A_BOLD);
+            box(menu_item->win, 0, 0);
+            wattroff(menu_item->win, A_BOLD);
         } else {
-
-            set_menu_fore(menu_item -> menu, A_DIM);
-            set_menu_back(menu_item -> menu, A_DIM);
-            set_menu_mark(menu_item -> menu, "   ");
-
-            box(menu_item -> win, 0, 0);
+            // Non-focused menu
+            set_menu_fore(menu_item->menu, A_DIM);
+            set_menu_back(menu_item->menu, A_DIM);
+            
+            // Show selection indicator for filters/tags even when not focused
+            if(i == 0 && selected_filter_index >= 0) {
+                // Filter menu show which filter is active
+                set_menu_mark(menu_item->menu, " > ");
+                // Position cursor on selected filter
+                ITEM **items = menu_items(menu_item->menu);
+                int item_count_val = item_count(menu_item->menu);
+                if (selected_filter_index < item_count_val) {
+                    set_current_item(menu_item->menu, items[selected_filter_index]);
+                }
+            } else if(i == 1 && selected_tag_index >= 0) {
+                // Tag menu
+                set_menu_mark(menu_item->menu, " > ");
+                
+                ITEM **items = menu_items(menu_item->menu);
+                int item_count_val = item_count(menu_item->menu);
+                if (selected_tag_index < item_count_val) {
+                    set_current_item(menu_item->menu, items[selected_tag_index]);
+                }
+            } else {
+                set_menu_mark(menu_item->menu, "   ");
+            }
+            
+            box(menu_item->win, 0, 0);
         }
-        wrefresh(menu_item -> win);
+        wrefresh(menu_item->win);
     }
     refresh();
 }
 
+void mark_selected_filter(int selected_index) {
+    selected_filter_index = selected_index;
+    selected_tag_index = -1;
+}
+
+void mark_selected_tag(int selected_index) {
+    selected_tag_index = selected_index;
+    selected_filter_index = -1;
+}

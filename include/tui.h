@@ -42,4 +42,7 @@ void create_tasks_menu_test(TasksPane *tasks_pane);
 void reload_tasks_menu(sqlite3 *db, TasksPane *tasks_pane, const char *where_clause);
 void update_menu_highlighting();
 
+void mark_selected_tag(int selected_index);
+void mark_selected_filter(int selected_index);
+
 #endif
