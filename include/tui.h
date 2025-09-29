@@ -3,6 +3,7 @@
 
 #include <ncurses.h>
 #include <menu.h>
+#include <form.h>
 
 #include "database.h"
 
@@ -44,5 +45,9 @@ void update_menu_highlighting();
 
 void mark_selected_tag(int selected_index);
 void mark_selected_filter(int selected_index);
+
+// form:
+
+WINDOW *create_form_window(void);
 
 #endif

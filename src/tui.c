@@ -186,6 +186,11 @@ void init_tui(sqlite3 *db){
                 pos_menu_cursor(current_menu -> menu);
                 break;
             }
+            case 'a':
+            case 'A':
+                WINDOW *test = create_form_window();
+                break;
+
             case 'q':
                 cleanup_menus();
                 destroy_win(top_bar);
@@ -589,4 +594,28 @@ void mark_selected_filter(int selected_index) {
 void mark_selected_tag(int selected_index) {
     selected_tag_index = selected_index;
     selected_filter_index = -1;
+}
+
+// form:
+
+WINDOW *create_form_window(void){
+    int form_height = 20;
+    int form_width = 60;
+    int start_y = (src_height - form_height)/2;
+    int start_x = (src_width - form_width)/2;
+
+    WINDOW *form_win = newwin(form_height, form_width, start_y, start_x);
+    box(form_win, 0, 0);
+
+    wattron(form_win, A_BOLD);
+    print_in_middle(form_win, 1, 0, form_width, "Add New Task");
+    wattroff(form_win, A_BOLD);
+
+    mvwaddch(form_win, 2, 0, ACS_LTEE);
+    mvwhline(form_win, 2, 1, ACS_HLINE, form_width - 2);
+    mvwaddch(form_win, 2, form_width - 1, ACS_RTEE);
+    
+    wrefresh(form_win);
+
+    return form_win;
 }
