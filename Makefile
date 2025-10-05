@@ -20,7 +20,7 @@ TARGET_PATH := $(BIN_DIR)/$(TARGET)
 COMMON_CFLAGS := -std=c11 -Wall -Wextra -I$(INCLUDE_DIR) -MMD -MP
 
 # Libraries
-LIBS := -lsqlite3 -lncurses -lmenu
+LIBS := -lsqlite3 -lncurses -lmenu -lpanel -lform
 
 # Build-type
 ifeq ($(DEBUG),1)

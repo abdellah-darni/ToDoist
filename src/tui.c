@@ -4,6 +4,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sqlite3.h>
+#include <panel.h>
+#include <form.h>
 
 #include "tui.h"
 #include "database.h"
@@ -15,6 +17,13 @@ char *tasks_filters_list[] = {
     "Over-Due",
     "Completed"
 };
+
+typedef struct {
+    char title[256];
+    char description[512];
+    char due_date[20];  // Format: YYYY-MM-DD HH:MM
+    int tag_id;
+} TaskFormData;
 
 int tasks_filters_count = 5;
 
@@ -188,7 +197,18 @@ void init_tui(sqlite3 *db){
             }
             case 'a':
             case 'A':
-                WINDOW *test = create_form_window();
+                show_add_task_form();
+    
+                // Refresh all windows after form closes
+                update_menu_highlighting();
+                
+                // Update task details if on tasks menu
+                // if (current_focus_idx == 2 && focusable_menus[2].menu) {
+                //     ITEM *current = current_item(focusable_menus[2].menu);
+                //     if (current) {
+                //         show_task_details(task_details_win, (Task *)item_userptr(current));
+                //     }
+                // }
                 break;
 
             case 'q':
@@ -614,8 +634,117 @@ WINDOW *create_form_window(void){
     mvwaddch(form_win, 2, 0, ACS_LTEE);
     mvwhline(form_win, 2, 1, ACS_HLINE, form_width - 2);
     mvwaddch(form_win, 2, form_width - 1, ACS_RTEE);
-    
-    wrefresh(form_win);
+
 
     return form_win;
+}
+
+
+void destroy_form_window(WINDOW *form_win) {
+    werase(form_win);
+    wrefresh(form_win);
+    delwin(form_win);
+    touchwin(stdscr);
+    refresh();
+}
+
+
+void show_add_task_form(void) {
+    FIELD *field[4];
+    FORM *form;
+    WINDOW *form_win, *form_subwin;
+    PANEL *form_panel;
+
+    form_win = create_form_window();
+    keypad(form_win, TRUE);
+
+    mvwprintw(form_win, 4, 2, "Title:");
+    mvwprintw(form_win, 6, 2, "Description:");
+    mvwprintw(form_win, 10, 2, "Due Date:");
+    mvwprintw(form_win, 13, 2, "(Format: YYYY-MM-DD HH:MM)");
+    
+    mvwprintw(form_win, 18, 2, "Press ENTER to save, ESC to cancel");
+
+
+    form_subwin = derwin(form_win, 10, 45, 4, 13);
+
+
+    field[0] = new_field(1, 40, 0, 0, 0, 0);
+    field[1] = new_field(1, 40, 2, 0, 0, 0);
+    field[2] = new_field(1, 40, 6, 0, 0, 0);
+    field[3] = NULL;
+
+    for(int i = 0; i < 3; i++) {
+        set_field_back(field[i], A_UNDERLINE);
+        field_opts_off(field[i], O_AUTOSKIP);
+    }
+
+    form = new_form(field);
+    set_form_win(form, form_win);
+    set_form_sub(form, form_subwin);
+    post_form(form);
+
+    form_panel = new_panel(form_win);
+    top_panel(form_panel);
+    
+    update_panels();
+    doupdate();
+    curs_set(1);
+    
+    int ch;
+    while ((ch = wgetch(form_win)) != 27 && ch != 10) {
+        switch (ch) {
+            case KEY_DOWN:
+            case 9:
+                form_driver(form, REQ_NEXT_FIELD);
+                form_driver(form, REQ_END_LINE);
+                break;
+            case KEY_UP:
+                form_driver(form, REQ_PREV_FIELD);
+                form_driver(form, REQ_END_LINE);
+                break;
+            case KEY_BACKSPACE:
+            case 127:
+            case KEY_DC:
+                form_driver(form, REQ_DEL_PREV);
+                break;
+            default:
+                form_driver(form, ch);
+                break;
+        }
+        wrefresh(form_win);
+    }
+
+    if (ch == 10) {
+        TaskFormData data = {0};
+        
+        form_driver(form, REQ_VALIDATION);
+        
+        // Extract field buffers (trim whitespace)
+        char *title_buf = field_buffer(field[0], 0);
+        char *desc_buf = field_buffer(field[1], 0);
+        char *date_buf = field_buffer(field[2], 0);
+        
+        // Trim trailing spaces (field buffers are padded)
+        sscanf(title_buf, "%255[^\n]", data.title);
+        sscanf(desc_buf, "%511[^\n]", data.description);
+        sscanf(date_buf, "%19[^\n]", data.due_date);
+        
+        // TODO: Validate and save to database
+        // insert_task(db, &data);
+    }
+    
+    curs_set(0);
+
+    // Cleanup
+    unpost_form(form);
+    free_form(form);
+    for(int i = 0; i < 3; i++) {
+        free_field(field[i]);
+    }
+
+    hide_panel(form_panel);
+    del_panel(form_panel);
+    delwin(form_subwin);
+    destroy_form_window(form_win);
 }

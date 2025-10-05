@@ -49,5 +49,7 @@ void mark_selected_filter(int selected_index);
 // form:
 
 WINDOW *create_form_window(void);
+void destroy_form_window(WINDOW *form_win);
+void show_add_task_form(void);
 
 #endif
