@@ -52,4 +52,6 @@ WINDOW *create_form_window(void);
 void destroy_form_window(WINDOW *form_win);
 void show_add_task_form(void);
 
+char* show_tag_menu(WINDOW *parent_win, char **tags, int tag_count);
+
 #endif

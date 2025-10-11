@@ -6,6 +6,7 @@
 #include <sqlite3.h>
 #include <panel.h>
 #include <form.h>
+#include <locale.h> 
 
 #include "tui.h"
 #include "database.h"
@@ -44,7 +45,12 @@ int selected_tag_index = -1;
 
 int src_width, src_height;
 
+int tags_count;
+char **tags_list = NULL;
+
 void init_tui(sqlite3 *db){
+
+    setlocale(LC_ALL, "");
 
     ITEM  **filter_items = NULL;
     MENU *filter_menu = NULL;
@@ -53,8 +59,7 @@ void init_tui(sqlite3 *db){
     ITEM **tags_items;
     MENU *tags_menu;
     WINDOW *tags_bar_win;
-    int tags_count;
-    char **tags_list = NULL;
+
 
     TasksPane tasks_pane = {
         .win    = NULL,
@@ -203,12 +208,12 @@ void init_tui(sqlite3 *db){
                 update_menu_highlighting();
                 
                 // Update task details if on tasks menu
-                // if (current_focus_idx == 2 && focusable_menus[2].menu) {
-                //     ITEM *current = current_item(focusable_menus[2].menu);
-                //     if (current) {
-                //         show_task_details(task_details_win, (Task *)item_userptr(current));
-                //     }
-                // }
+                if (current_focus_idx == 2 && focusable_menus[2].menu) {
+                    ITEM *current = current_item(focusable_menus[2].menu);
+                    if (current) {
+                        show_task_details(task_details_win, (Task *)item_userptr(current));
+                    }
+                }
                 break;
 
             case 'q':
@@ -619,8 +624,8 @@ void mark_selected_tag(int selected_index) {
 // form:
 
 WINDOW *create_form_window(void){
-    int form_height = 20;
-    int form_width = 60;
+    int form_height = 24;
+    int form_width = 70;
     int start_y = (src_height - form_height)/2;
     int start_x = (src_width - form_width)/2;
 
@@ -650,7 +655,7 @@ void destroy_form_window(WINDOW *form_win) {
 
 
 void show_add_task_form(void) {
-    FIELD *field[4];
+    FIELD *field[5];
     FORM *form;
     WINDOW *form_win, *form_subwin;
     PANEL *form_panel;
@@ -658,26 +663,38 @@ void show_add_task_form(void) {
     form_win = create_form_window();
     keypad(form_win, TRUE);
 
+    char selected_tag[64] = "None"; // the deffault tag is none (no tag) 
+
     mvwprintw(form_win, 4, 2, "Title:");
-    mvwprintw(form_win, 6, 2, "Description:");
-    mvwprintw(form_win, 10, 2, "Due Date:");
-    mvwprintw(form_win, 13, 2, "(Format: YYYY-MM-DD HH:MM)");
+    mvwprintw(form_win, 6, 2, "Description: ");
+    mvwprintw(form_win, 12, 2, "Due Date:");
+    mvwprintw(form_win, 13, 2, "HH:MM DD/MM/YYYY");
+    mvwprintw(form_win, 15, 2, "Tag:");
+    mvwprintw(form_win, 15, 16, "[%s] Press TAB to select", selected_tag);
     
-    mvwprintw(form_win, 18, 2, "Press ENTER to save, ESC to cancel");
+    mvwprintw(form_win, 22, 2, "ENTER: Next field/Save | ESC: Cancel | ↑↓: Navigate | TAB on Tag: Select");
+    
+    
+    // mvwprintw(form_win, 22, 2, "Press ENTER to save, ESC to cancel, ↑↓ to navigate.");
 
 
-    form_subwin = derwin(form_win, 10, 45, 4, 13);
+    form_subwin = derwin(form_win, 14, 52, 4, 16);
 
 
-    field[0] = new_field(1, 40, 0, 0, 0, 0);
-    field[1] = new_field(1, 40, 2, 0, 0, 0);
-    field[2] = new_field(1, 40, 6, 0, 0, 0);
-    field[3] = NULL;
+    field[0] = new_field(1, 50, 0, 0, 0, 0); //Title
+    field[1] = new_field(4, 50, 2, 0, 0, 0); // Descreption
+    field[2] = new_field(1, 50, 8, 0, 0, 0); // Due date
+    field[3] = new_field(1, 30, 11, 0, 0, 0); // Tag
+    field[4] = NULL;
 
-    for(int i = 0; i < 3; i++) {
+    for(int i = 0; i < 4; i++) {
         set_field_back(field[i], A_UNDERLINE);
         field_opts_off(field[i], O_AUTOSKIP);
     }
+
+    field_opts_off(field[3], O_EDIT);
+    // field_opts_off(field[3], O_ACTIVE);
+    set_field_buffer(field[3], 0, selected_tag);
 
     form = new_form(field);
     set_form_win(form, form_win);
@@ -692,22 +709,67 @@ void show_add_task_form(void) {
     curs_set(1);
     
     int ch;
-    while ((ch = wgetch(form_win)) != 27 && ch != 10) {
+    int current_field = 0;
+
+    while ((ch = wgetch(form_win)) != 27) {
         switch (ch) {
             case KEY_DOWN:
-            case 9:
-                form_driver(form, REQ_NEXT_FIELD);
-                form_driver(form, REQ_END_LINE);
+                if (current_field < 3){
+                    form_driver(form, REQ_NEXT_FIELD);
+                    form_driver(form, REQ_END_LINE);
+                    current_field++;
+                }
                 break;
             case KEY_UP:
-                form_driver(form, REQ_PREV_FIELD);
-                form_driver(form, REQ_END_LINE);
+                if (current_field > 0){
+                    form_driver(form, REQ_PREV_FIELD);
+                    form_driver(form, REQ_END_LINE);
+                    current_field--;
+                }
+                break;
+            case 9:  // TAB key
+                if (current_field == 3) {  // On tag field
+                    char *new_tag = show_tag_menu(form_win, tags_list, tags_count);
+                    strcpy(selected_tag, new_tag);
+                    set_field_buffer(field[3], 0, selected_tag);
+                    mvwprintw(form_win, 15, 16, "[%-15s] Press TAB to select", selected_tag);
+                    wrefresh(form_win);
+                } else {
+
+                    if (current_field < 3) {
+                        form_driver(form, REQ_NEXT_FIELD);
+                        form_driver(form, REQ_END_LINE);
+                        current_field++;
+                    }
+                }
+                break;
+            case 10:
+                if (current_field < 3) {
+                    form_driver(form, REQ_NEXT_FIELD);
+                    form_driver(form, REQ_END_LINE);
+                    current_field++;
+                } else {
+                    // goto save_form;
+                }
                 break;
             case KEY_BACKSPACE:
             case 127:
-            case KEY_DC:
+            case 8:
                 form_driver(form, REQ_DEL_PREV);
                 break;
+                
+            case KEY_DC:  // Delete key
+                form_driver(form, REQ_DEL_CHAR);
+                break;
+                
+            case KEY_LEFT:
+                form_driver(form, REQ_PREV_CHAR);
+                break;
+                
+            case KEY_RIGHT:
+                form_driver(form, REQ_NEXT_CHAR);
+                break;
+
             default:
                 form_driver(form, ch);
                 break;
@@ -715,24 +777,24 @@ void show_add_task_form(void) {
         wrefresh(form_win);
     }
 
-    if (ch == 10) {
-        TaskFormData data = {0};
+    // if (ch == 10) {
+    //     TaskFormData data = {0};
         
-        form_driver(form, REQ_VALIDATION);
+    //     form_driver(form, REQ_VALIDATION);
         
-        // Extract field buffers (trim whitespace)
-        char *title_buf = field_buffer(field[0], 0);
-        char *desc_buf = field_buffer(field[1], 0);
-        char *date_buf = field_buffer(field[2], 0);
+    //     // Extract field buffers (trim whitespace)
+    //     char *title_buf = field_buffer(field[0], 0);
+    //     char *desc_buf = field_buffer(field[1], 0);
+    //     char *date_buf = field_buffer(field[2], 0);
         
-        // Trim trailing spaces (field buffers are padded)
-        sscanf(title_buf, "%255[^\n]", data.title);
-        sscanf(desc_buf, "%511[^\n]", data.description);
-        sscanf(date_buf, "%19[^\n]", data.due_date);
+    //     // Trim trailing spaces (field buffers are padded)
+    //     sscanf(title_buf, "%255[^\n]", data.title);
+    //     sscanf(desc_buf, "%511[^\n]", data.description);
+    //     sscanf(date_buf, "%19[^\n]", data.due_date);
         
-        // TODO: Validate and save to database
-        // insert_task(db, &data);
-    }
+    //     // TODO: Validate and save to database
+    //     // insert_task(db, &data);
+    // }
     
     curs_set(0);
 
@@ -747,4 +809,97 @@ void show_add_task_form(void) {
     del_panel(form_panel);
     delwin(form_subwin);
     destroy_form_window(form_win);
+}
+
+
+
+char* show_tag_menu(WINDOW *parent_win, char **tags, int tag_count) {
+    static char selected_tag[64] = "None";
+    
+    int menu_height = 25 + 5;
+    int menu_width = 30;
+    int start_y = (getmaxy(parent_win) - menu_height) / 2;
+    int start_x = (getmaxx(parent_win) - menu_width) / 2;
+
+    curs_set(0);
+    
+    WINDOW *menu_win = newwin(menu_height, menu_width, getbegy(parent_win) + start_y, getbegx(parent_win) + start_x);
+    
+    box(menu_win, 0, 0);
+    mvwprintw(menu_win, 1, 2, "Select Tag (↑↓ ENTER)");
+    mvwaddch(menu_win, 2, 0, ACS_LTEE);
+    mvwhline(menu_win, 2, 1, ACS_HLINE, menu_width - 2);
+    mvwaddch(menu_win, 2, menu_width - 1, ACS_RTEE);
+
+    WINDOW *menu_subwin = derwin(menu_win, 26, 26, 3, 2);
+    
+    ITEM **menu_items = (ITEM **)calloc(tag_count+3, sizeof(ITEM *));
+
+    menu_items[0] = new_item("None", NULL);
+    menu_items[1] = new_item("-- Add new tag --", NULL);
+    for (int i = 0; i < tag_count; i++) {
+        menu_items[i+2] = new_item(tags[i], NULL);
+    }
+    menu_items[tag_count+2] = NULL;
+
+    MENU *the_menu =  new_menu(menu_items);
+    
+    set_menu_win(the_menu, menu_win);
+    set_menu_sub(the_menu, menu_subwin);
+    set_menu_mark(the_menu, " > ");
+    set_menu_format(the_menu, 26, 1);
+
+    post_menu(the_menu);
+
+    PANEL *menu_panel = new_panel(menu_win);
+
+    int ch;
+    
+    keypad(menu_win, TRUE);
+
+    update_panels();
+    doupdate();
+    
+    while (1) {
+        ch = wgetch(menu_win);
+        
+        switch (ch) {
+            case KEY_UP:
+                menu_driver(the_menu, REQ_PREV_ITEM);
+                break;
+            case KEY_DOWN:
+                menu_driver(the_menu, REQ_NEXT_ITEM);
+                break;
+            case 10:
+                strcpy(selected_tag, item_name(current_item(the_menu)));
+                if (strcmp(selected_tag, "-- Add new tag --") == 0){
+
+                }
+                goto exit_menu;
+                break;
+            case 27:
+                strcpy(selected_tag, "None");
+                goto exit_menu;
+                break;
+        }
+    }
+    
+exit_menu:
+    curs_set(1);
+    hide_panel(menu_panel);
+    unpost_menu(the_menu);
+    free_menu(the_menu);
+
+    for (int i = 0; i < tag_count+3; i++){
+        free_item(menu_items[i]);
+    }
+    free(menu_items);
+
+    del_panel(menu_panel);
+    delwin(menu_subwin);
+    delwin(menu_win);
+    update_panels();
+    doupdate();
+
+    return selected_tag;
 }
