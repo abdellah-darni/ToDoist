@@ -202,7 +202,7 @@ void init_tui(sqlite3 *db){
             }
             case 'a':
             case 'A':
-                show_add_task_form();
+                show_add_task_form(db);
     
                 // Refresh all windows after form closes
                 update_menu_highlighting();
@@ -654,7 +654,7 @@ void destroy_form_window(WINDOW *form_win) {
 }
 
 
-void show_add_task_form(void) {
+void show_add_task_form(sqlite3 *db) {
     FIELD *field[5];
     FORM *form;
     WINDOW *form_win, *form_subwin;
@@ -731,7 +731,7 @@ void show_add_task_form(void) {
                 if (current_field == 3) {  // On tag field
                     char *new_tag = show_tag_menu(form_win, tags_list, tags_count);
                     if (strcmp(new_tag, "-- Add new tag --") == 0){
-                        show_add_tag_win(form_win, tags_list, tags_count);
+                        show_add_tag_win(form_win, tags_list, tags_count, db);
                     }
                     // strcpy(selected_tag, new_tag);
                     // set_field_buffer(field[3], 0, selected_tag);
@@ -911,7 +911,7 @@ exit_menu:
     return selected_tag;
 }
 
-char *show_add_tag_win(WINDOW *parent_win, char **tags, int tag_count){
+char *show_add_tag_win(WINDOW *parent_win, char **tags, int tag_count, sqlite3 *db){
     char new_tag[31] = "";
 
     int win_height = 12;
@@ -962,12 +962,18 @@ char *show_add_tag_win(WINDOW *parent_win, char **tags, int tag_count){
         case 10:
             if (pos > 0){
                 strcpy(new_tag, input);
-                // TODO : cheack if the tag is already exist or no
-                hide_panel(add_tag_panel);
-                del_panel(add_tag_panel);
-                delwin(add_tag_win);
+                int exists = is_tag_exist(db, new_tag);
+                if (exists == -1){
+                    mvwprintw(add_tag_win, 8, 1, "Error checking tag existence!");
+                }else if (exists == 0){
+                    hide_panel(add_tag_panel);
+                    del_panel(add_tag_panel);
+                    delwin(add_tag_win);
                 
-                return new_tag;
+                    return new_tag;
+                }else{
+                    mvwprintw(add_tag_win, 8, 1, "The tag \"%s\" already exist...", new_tag);
+                }
             }
             break;
         case 27:

@@ -50,9 +50,9 @@ void mark_selected_filter(int selected_index);
 
 WINDOW *create_form_window(void);
 void destroy_form_window(WINDOW *form_win);
-void show_add_task_form(void);
+void show_add_task_form(sqlite3 *db);
 
 char* show_tag_menu(WINDOW *parent_win, char **tags, int tag_count);
-char *show_add_tag_win(WINDOW *parent_win, char **tags, int tag_count);
+char *show_add_tag_win(WINDOW *parent_win, char **tags, int tag_count, sqlite3 *db);
 
 #endif

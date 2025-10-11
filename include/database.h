@@ -38,5 +38,7 @@ void free_tasks_list(Tasks *tasks);
 void create_no_tasks_message(char *buffer, size_t buffer_size, const char *where_clause);
 Task * task_placeholder(const char *title, const char *desc);
 
+int is_tag_exist(sqlite3 *db, const char *new_tag);
+
 
 #endif

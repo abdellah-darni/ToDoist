@@ -398,3 +398,29 @@ Task * task_placeholder(const char *title, const char *desc){
 
     return error_task;
 }
+
+int is_tag_exist(sqlite3 *db, const char *new_tag){
+    if (!db || !new_tag) return -1;
+
+    sqlite3_stmt *stmt;
+    int rc;
+
+    char sql[512];
+
+    snprintf(sql, sizeof(sql), "SELECT EXISTS ( "
+                                    "SELECT 1 "
+                                    "FROM tags "
+                                    "WHERE name = '%s');", new_tag);
+
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
+        return -1;
+    }
+
+    if ((rc = sqlite3_step(stmt)) == SQLITE_ROW){
+        return sqlite3_column_int(stmt, 0);
+    }
+
+    return -1;
+}
