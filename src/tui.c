@@ -730,10 +730,13 @@ void show_add_task_form(void) {
             case 9:  // TAB key
                 if (current_field == 3) {  // On tag field
                     char *new_tag = show_tag_menu(form_win, tags_list, tags_count);
-                    strcpy(selected_tag, new_tag);
-                    set_field_buffer(field[3], 0, selected_tag);
-                    mvwprintw(form_win, 15, 16, "[%-15s] Press TAB to select", selected_tag);
-                    wrefresh(form_win);
+                    if (strcmp(new_tag, "-- Add new tag --") == 0){
+                        show_add_tag_win(form_win, tags_list, tags_count);
+                    }
+                    // strcpy(selected_tag, new_tag);
+                    // set_field_buffer(field[3], 0, selected_tag);
+                    // mvwprintw(form_win, 15, 16, "[%-15s] Press TAB to select", selected_tag);
+                    // wrefresh(form_win);
                 } else {
 
                     if (current_field < 3) {
@@ -872,9 +875,13 @@ char* show_tag_menu(WINDOW *parent_win, char **tags, int tag_count) {
                 break;
             case 10:
                 strcpy(selected_tag, item_name(current_item(the_menu)));
-                if (strcmp(selected_tag, "-- Add new tag --") == 0){
-
-                }
+                // if (strcmp(selected_tag, "-- Add new tag --") == 0){
+                //     // hide_panel(menu_panel);
+                //     // unpost_menu(the_menu);
+                //     show_add_tag_win(parent_win, tags, tag_count);
+                // }
+                // // touchwin(menu_win);
+                // // wrefresh(menu_win);
                 goto exit_menu;
                 break;
             case 27:
@@ -902,4 +909,98 @@ exit_menu:
     doupdate();
 
     return selected_tag;
+}
+
+char *show_add_tag_win(WINDOW *parent_win, char **tags, int tag_count){
+    char new_tag[31] = "";
+
+    int win_height = 12;
+    int win_width = 35;
+    int start_y = (getmaxy(parent_win) - win_height) / 2;
+    int start_x = (getmaxx(parent_win) - win_width) / 2;
+    WINDOW *add_tag_win = newwin(win_height, win_width, getbegy(parent_win) + start_y, getbegx(parent_win) + start_x);
+
+    keypad(add_tag_win, TRUE);
+
+    box(add_tag_win, 0, 0);
+    mvwprintw(add_tag_win, 1, 12, "Add New Tag");
+    mvwaddch(add_tag_win, 2, 0, ACS_LTEE);
+    mvwhline(add_tag_win, 2, 1, ACS_HLINE, win_width - 2);
+    mvwaddch(add_tag_win, 2, win_width - 1, ACS_RTEE);
+
+    mvwprintw(add_tag_win, 4, 1, "Tag name: ");
+    mvwprintw(add_tag_win, 10, 1, "ENTER: Save | ESC: Cancel");
+
+    PANEL *add_tag_panel = new_panel(add_tag_win);
+
+    update_panels();
+    doupdate();
+
+    char input[64] = "";
+    int pos = 0;
+    int ch;
+
+    
+    curs_set(1);
+
+    while(1){
+        
+
+        wmove(add_tag_win, 6, 2);
+        for (int i = 0; i < 30; i++) {
+            waddch(add_tag_win, ' ');
+        }
+
+        mvwprintw(add_tag_win, 6, 2,"%s", input);
+        wmove(add_tag_panel, 6, 2 + pos);
+        wrefresh(add_tag_win);
+
+        ch = wgetch(add_tag_win);
+
+        switch (ch)
+        {
+        case 10:
+            if (pos > 0){
+                strcpy(new_tag, input);
+                // TODO : cheack if the tag is already exist or no
+                hide_panel(add_tag_panel);
+                del_panel(add_tag_panel);
+                delwin(add_tag_win);
+                
+                return new_tag;
+            }
+            break;
+        case 27:
+            hide_panel(add_tag_panel);
+            del_panel(add_tag_panel);
+            delwin(add_tag_win);
+
+            return NULL;
+                
+            break;
+        case KEY_BACKSPACE:
+        case 127:
+        case 8:
+            if (pos > 0){
+                input[pos] = '\0';
+                pos--;
+                input[pos] = '\0';
+            }
+            break;
+        default:
+            if (ch >= 32 && ch <= 126 && pos < 30){
+                input[pos] = ch;
+                pos++;
+                input[pos] = '\0';
+            }
+            break;
+        }
+    }
+
+    
+    hide_panel(add_tag_panel);
+    del_panel(add_tag_panel);
+    delwin(add_tag_win);
+
+    return NULL;
 }
