@@ -667,7 +667,7 @@ void show_add_task_form(sqlite3 *db) {
     mvwprintw(form_win, 4, 2, "Title:");
     mvwprintw(form_win, 6, 2, "Description: ");
     mvwprintw(form_win, 12, 2, "Due Date:");
-    mvwprintw(form_win, 13, 2, "HH:MM DD/MM/YYYY");
+    
     mvwprintw(form_win, 15, 2, "Tag:");
     mvwprintw(form_win, 15, 16, "[%s] Press TAB to select", selected_tag);
     
@@ -682,7 +682,7 @@ void show_add_task_form(sqlite3 *db) {
 
     field[0] = new_field(1, 50, 0, 0, 0, 0); //Title
     field[1] = new_field(4, 50, 2, 0, 0, 0); // Descreption
-    field[2] = new_field(1, 50, 8, 0, 0, 0); // Due date
+    field[2] = new_field(1, 16, 8, 0, 0, 0); // Due date
     field[3] = new_field(1, 30, 11, 0, 0, 0); // Tag
     field[4] = NULL;
 
@@ -705,6 +705,12 @@ void show_add_task_form(sqlite3 *db) {
     
     update_panels();
     doupdate();
+
+    wattron(form_win, A_DIM);
+    mvwprintw(form_win, 12, 35, "HH:MM DD/MM/YYYY");
+    wattroff(form_win, A_DIM);
+    wrefresh(form_win);
+
     curs_set(1);
     
     int ch;
@@ -878,7 +884,9 @@ void show_tag_menu(WINDOW *parent_win,char *selected_tag, char **tags, int tag_c
                 goto exit_menu;
                 break;
             case 27:
-                strcpy(selected_tag, "None");
+                if (strcmp(selected_tag, "-- Add new tag --") == 0){
+                    strcpy(selected_tag, "None");
+                }
                 goto exit_menu;
                 break;
         }
