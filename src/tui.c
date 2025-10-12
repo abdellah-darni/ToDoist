@@ -10,6 +10,7 @@
 
 #include "tui.h"
 #include "database.h"
+#include "utils.h"
 
 char *tasks_filters_list[] = {
     "All",
@@ -654,7 +655,7 @@ void destroy_form_window(WINDOW *form_win) {
 
 
 void show_add_task_form(sqlite3 *db) {
-    FIELD *field[5];
+    FIELD *fields[5];
     FORM *form;
     WINDOW *form_win, *form_subwin;
     PANEL *form_panel;
@@ -680,22 +681,22 @@ void show_add_task_form(sqlite3 *db) {
     form_subwin = derwin(form_win, 14, 52, 4, 16);
 
 
-    field[0] = new_field(1, 50, 0, 0, 0, 0); //Title
-    field[1] = new_field(4, 50, 2, 0, 0, 0); // Descreption
-    field[2] = new_field(1, 16, 8, 0, 0, 0); // Due date
-    field[3] = new_field(1, 30, 11, 0, 0, 0); // Tag
-    field[4] = NULL;
+    fields[0] = new_field(1, 50, 0, 0, 0, 0); //Title
+    fields[1] = new_field(4, 50, 2, 0, 0, 0); // Descreption
+    fields[2] = new_field(1, 16, 8, 0, 0, 0); // Due date
+    fields[3] = new_field(1, 30, 11, 0, 0, 0); // Tag
+    fields[4] = NULL;
 
     for(int i = 0; i < 4; i++) {
-        set_field_back(field[i], A_UNDERLINE);
-        field_opts_off(field[i], O_AUTOSKIP);
+        set_field_back(fields[i], A_UNDERLINE);
+        field_opts_off(fields[i], O_AUTOSKIP);
     }
 
-    field_opts_off(field[3], O_EDIT);
+    field_opts_off(fields[3], O_EDIT);
     // field_opts_off(field[3], O_ACTIVE);
-    set_field_buffer(field[3], 0, selected_tag);
+    set_field_buffer(fields[3], 0, selected_tag);
 
-    form = new_form(field);
+    form = new_form(fields);
     set_form_win(form, form_win);
     set_form_sub(form, form_subwin);
     post_form(form);
@@ -712,11 +713,15 @@ void show_add_task_form(sqlite3 *db) {
     wrefresh(form_win);
 
     curs_set(1);
+    pos_form_cursor(form);
     
     int ch;
     int current_field = 0;
 
     while ((ch = wgetch(form_win)) != 27) {
+        mvwprintw(form_win, 17, 16, "%-45s", "");
+        wrefresh(form_win);
+
         switch (ch) {
             case KEY_DOWN:
                 if (current_field < 3){
@@ -737,11 +742,9 @@ void show_add_task_form(sqlite3 *db) {
                     show_tag_menu(form_win, selected_tag, tags_list, tags_count);
                     if (strcmp(selected_tag, "-- Add new tag --") == 0){
                         show_add_tag_win(form_win, selected_tag, db);
-                        // mvwprintw(form_win, 17, 16, "the selected tag: %s", selected_tag);
-                        // wrefresh(form_win);
                     }
 
-                    set_field_buffer(field[3], 0, selected_tag);
+                    set_field_buffer(fields[3], 0, selected_tag);
                     mvwprintw(form_win, 15, 16, "[%-15s] Press TAB to select", selected_tag);
                     wrefresh(form_win);
                 } else {
@@ -759,6 +762,35 @@ void show_add_task_form(sqlite3 *db) {
                     form_driver(form, REQ_END_LINE);
                     current_field++;
                 } else {
+                    form_driver(form, REQ_VALIDATION);
+
+                    char *title = trim_fieldbuf(field_buffer(fields[0], 0));
+
+                    if (!title || title[0] == '\0'){
+                        mvwprintw(form_win, 17, 16, "Title cannot be empty. Please enter a title.");
+                        current_field = 0;
+                        set_current_field(form, fields[0]);
+                        pos_form_cursor(form);
+                        wrefresh(form_win);
+                        free(title);
+                        continue;
+                    }
+
+                    char *date = trim_fieldbuf(field_buffer(fields[2], 0));
+
+                    if (date && date[0] != '\0'){ // the due date is optional
+                        if(!validate_datetime(date)){
+                            mvwprintw(form_win, 17, 16, "Invalid date. Use HH:MM DD/MM/YYYY.");
+                            current_field = 2;
+                            set_current_field(form, fields[2]);
+                            pos_form_cursor(form);
+                            wrefresh(form_win);
+                            free(date);
+                            continue;
+                        }
+                    }
+
+
                     // goto save_form;
                 }
                 break;
@@ -812,7 +844,7 @@ void show_add_task_form(sqlite3 *db) {
     unpost_form(form);
     free_form(form);
     for(int i = 0; i < 3; i++) {
-        free_field(field[i]);
+        free_field(fields[i]);
     }
 
     hide_panel(form_panel);
