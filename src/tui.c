@@ -357,7 +357,6 @@ void print_in_middle(WINDOW *win, int starty, int startx, int src_width, char *s
 
 void reload_tasks_menu(sqlite3 *db, TasksPane *tasks_pane, const char *where_clause){
 
-    int window_height = src_height - 6;
     int window_width = (src_width - SIDE_BAR_WIDTH) / 2;
 
     unpost_menu(tasks_pane->menu);
@@ -663,7 +662,7 @@ void show_add_task_form(sqlite3 *db) {
     form_win = create_form_window();
     keypad(form_win, TRUE);
 
-    char selected_tag[64] = "None"; // the deffault tag is none (no tag) 
+    char selected_tag[31] = "None"; // the deffault tag is none (no tag) 
 
     mvwprintw(form_win, 4, 2, "Title:");
     mvwprintw(form_win, 6, 2, "Description: ");
@@ -672,7 +671,7 @@ void show_add_task_form(sqlite3 *db) {
     mvwprintw(form_win, 15, 2, "Tag:");
     mvwprintw(form_win, 15, 16, "[%s] Press TAB to select", selected_tag);
     
-    mvwprintw(form_win, 22, 2, "ENTER: Next field/Save | ESC: Cancel | ↑↓: Navigate | TAB on Tag: Select");
+    mvwprintw(form_win, 22, 2, "ENTER: Save | ESC: Cancel | ↑↓: Navigate | TAB on Tag: Select");
     
     
     // mvwprintw(form_win, 22, 2, "Press ENTER to save, ESC to cancel, ↑↓ to navigate.");
@@ -729,14 +728,16 @@ void show_add_task_form(sqlite3 *db) {
                 break;
             case 9:  // TAB key
                 if (current_field == 3) {  // On tag field
-                    char *new_tag = show_tag_menu(form_win, tags_list, tags_count);
-                    if (strcmp(new_tag, "-- Add new tag --") == 0){
-                        show_add_tag_win(form_win, tags_list, tags_count, db);
+                    show_tag_menu(form_win, selected_tag, tags_list, tags_count);
+                    if (strcmp(selected_tag, "-- Add new tag --") == 0){
+                        show_add_tag_win(form_win, selected_tag, db);
+                        // mvwprintw(form_win, 17, 16, "the selected tag: %s", selected_tag);
+                        // wrefresh(form_win);
                     }
-                    // strcpy(selected_tag, new_tag);
-                    // set_field_buffer(field[3], 0, selected_tag);
-                    // mvwprintw(form_win, 15, 16, "[%-15s] Press TAB to select", selected_tag);
-                    // wrefresh(form_win);
+
+                    set_field_buffer(field[3], 0, selected_tag);
+                    mvwprintw(form_win, 15, 16, "[%-15s] Press TAB to select", selected_tag);
+                    wrefresh(form_win);
                 } else {
 
                     if (current_field < 3) {
@@ -816,8 +817,7 @@ void show_add_task_form(sqlite3 *db) {
 
 
 
-char* show_tag_menu(WINDOW *parent_win, char **tags, int tag_count) {
-    static char selected_tag[64] = "None";
+void show_tag_menu(WINDOW *parent_win,char *selected_tag, char **tags, int tag_count) {
     
     int menu_height = 25 + 5;
     int menu_width = 30;
@@ -875,13 +875,6 @@ char* show_tag_menu(WINDOW *parent_win, char **tags, int tag_count) {
                 break;
             case 10:
                 strcpy(selected_tag, item_name(current_item(the_menu)));
-                // if (strcmp(selected_tag, "-- Add new tag --") == 0){
-                //     // hide_panel(menu_panel);
-                //     // unpost_menu(the_menu);
-                //     show_add_tag_win(parent_win, tags, tag_count);
-                // }
-                // // touchwin(menu_win);
-                // // wrefresh(menu_win);
                 goto exit_menu;
                 break;
             case 27:
@@ -908,11 +901,10 @@ exit_menu:
     update_panels();
     doupdate();
 
-    return selected_tag;
+    return ;
 }
 
-char *show_add_tag_win(WINDOW *parent_win, char **tags, int tag_count, sqlite3 *db){
-    char new_tag[31] = "";
+void show_add_tag_win(WINDOW *parent_win, char *selected_tag, sqlite3 *db){
 
     int win_height = 12;
     int win_width = 35;
@@ -936,7 +928,7 @@ char *show_add_tag_win(WINDOW *parent_win, char **tags, int tag_count, sqlite3 *
     update_panels();
     doupdate();
 
-    char input[64] = "";
+    char input[31] = "";
     int pos = 0;
     int ch;
 
@@ -945,14 +937,9 @@ char *show_add_tag_win(WINDOW *parent_win, char **tags, int tag_count, sqlite3 *
 
     while(1){
         
-
-        wmove(add_tag_win, 6, 2);
-        for (int i = 0; i < 30; i++) {
-            waddch(add_tag_win, ' ');
-        }
-
+        mvwprintw(add_tag_win, 6, 2,"%-30s", "");
         mvwprintw(add_tag_win, 6, 2,"%s", input);
-        wmove(add_tag_panel, 6, 2 + pos);
+        wmove(add_tag_win, 6, 2 + pos);
         wrefresh(add_tag_win);
 
         ch = wgetch(add_tag_win);
@@ -961,8 +948,8 @@ char *show_add_tag_win(WINDOW *parent_win, char **tags, int tag_count, sqlite3 *
         {
         case 10:
             if (pos > 0){
-                strcpy(new_tag, input);
-                int exists = is_tag_exist(db, new_tag);
+                strcpy(selected_tag, input);
+                int exists = is_tag_exist(db, selected_tag);
                 if (exists == -1){
                     mvwprintw(add_tag_win, 8, 1, "Error checking tag existence!");
                 }else if (exists == 0){
@@ -970,18 +957,19 @@ char *show_add_tag_win(WINDOW *parent_win, char **tags, int tag_count, sqlite3 *
                     del_panel(add_tag_panel);
                     delwin(add_tag_win);
                 
-                    return new_tag;
+                    return ;
                 }else{
-                    mvwprintw(add_tag_win, 8, 1, "The tag \"%s\" already exist...", new_tag);
+                    mvwprintw(add_tag_win, 8, 1, "The tag \"%s\" already exist...", selected_tag);
                 }
             }
             break;
         case 27:
+            strcpy(selected_tag, "None");
             hide_panel(add_tag_panel);
             del_panel(add_tag_panel);
             delwin(add_tag_win);
 
-            return NULL;
+            return;
                 
             break;
         case KEY_BACKSPACE:
@@ -1008,5 +996,5 @@ char *show_add_tag_win(WINDOW *parent_win, char **tags, int tag_count, sqlite3 *
     del_panel(add_tag_panel);
     delwin(add_tag_win);
 
-    return NULL;
+    return;
 }
