@@ -23,8 +23,8 @@ char *tasks_filters_list[] = {
 typedef struct {
     char title[256];
     char description[512];
-    char due_date[20];  // Format: YYYY-MM-DD HH:MM
-    int tag_id;
+    long due_date;
+    char tag_name;
 } TaskFormData;
 
 int tasks_filters_count = 5;
@@ -302,7 +302,6 @@ void add_focusable_window(WINDOW *win, MENU *menu){
     focusable_menus[num_focusable_menus - 1].is_focused = 0;
 }
 
-
 void switch_focus(WINDOW *task_details_win){
     if (num_focusable_menus <= 1) return;
 
@@ -332,7 +331,6 @@ void cleanup_menus(){
     num_focusable_menus = 0;
     current_focus_idx = 0;
 }
-
 
 void print_in_middle(WINDOW *win, int starty, int startx, int src_width, char *string){
 
@@ -404,7 +402,6 @@ void reload_tasks_menu(sqlite3 *db, TasksPane *tasks_pane, const char *where_cla
 
 }
 
-
 void show_task_details(WINDOW *win, Task *t) {
     if (!t) {
         werase(win);
@@ -450,12 +447,10 @@ void show_task_details(WINDOW *win, Task *t) {
     wrefresh(win);
 }
 
-
 WINDOW* create_top_bar() {
     WINDOW *top_bar = create_newwin(3, src_width, 0, 0);
     return top_bar;
 }
-
 
 void create_filter_menu(ITEM ***filter_items, MENU **filter_menu, WINDOW **filters_bar_win) {
     *filter_items = (ITEM **)calloc(tasks_filters_count + 1, sizeof(ITEM *));
@@ -562,7 +557,6 @@ WINDOW* create_task_details_window() {
     return task_details_win;
 }
 
-
 void update_menu_highlighting(void){
     for (int i = 0; i < num_focusable_menus; i++){
         FocusableMenu *menu_item = &focusable_menus[i];
@@ -644,7 +638,6 @@ WINDOW *create_form_window(void){
     return form_win;
 }
 
-
 void destroy_form_window(WINDOW *form_win) {
     werase(form_win);
     wrefresh(form_win);
@@ -652,7 +645,6 @@ void destroy_form_window(WINDOW *form_win) {
     touchwin(stdscr);
     refresh();
 }
-
 
 void show_add_task_form(sqlite3 *db) {
     FIELD *fields[5];
@@ -789,9 +781,30 @@ void show_add_task_form(sqlite3 *db) {
                             continue;
                         }
                     }
+                    
+                    TaskFormData new_task = {0};
+
+                    strcpy(new_task.title, title);
+                    strcpy(new_task.description, trim_fieldbuf(field_buffer(fields[1], 0)));
+
+                    // Convert the string date to a unix timestamp
+                    if (date && date[0] != '\0'){ 
+                        struct tm tm_info = {.tm_sec=0};
+                        char * res = strptime(date, "%H:%M %d/%m/%Y", &tm_info);
+                        if (res != NULL){
+                            new_task.due_date = mktime(&tm_info);
+                        } else {
+                            new_task.due_date = -1;
+                        }
+                    } else {
+                        new_task.due_date = -1;
+                    }
+
+                    strcpy(new_task.tag_name, trim_fieldbuf(field_buffer(fields[3], 0)));
 
 
-                    // goto save_form;
+                    // insert_task(db, &new_task);
+                    // goto exit;
                 }
                 break;
             case KEY_BACKSPACE:
@@ -818,25 +831,6 @@ void show_add_task_form(sqlite3 *db) {
         }
         wrefresh(form_win);
     }
-
-    // if (ch == 10) {
-    //     TaskFormData data = {0};
-        
-    //     form_driver(form, REQ_VALIDATION);
-        
-    //     // Extract field buffers (trim whitespace)
-    //     char *title_buf = field_buffer(field[0], 0);
-    //     char *desc_buf = field_buffer(field[1], 0);
-    //     char *date_buf = field_buffer(field[2], 0);
-        
-    //     // Trim trailing spaces (field buffers are padded)
-    //     sscanf(title_buf, "%255[^\n]", data.title);
-    //     sscanf(desc_buf, "%511[^\n]", data.description);
-    //     sscanf(date_buf, "%19[^\n]", data.due_date);
-        
-    //     // TODO: Validate and save to database
-    //     // insert_task(db, &data);
-    // }
     
     curs_set(0);
 
@@ -852,8 +846,6 @@ void show_add_task_form(sqlite3 *db) {
     delwin(form_subwin);
     destroy_form_window(form_win);
 }
-
-
 
 void show_tag_menu(WINDOW *parent_win,char *selected_tag, char **tags, int tag_count) {
     
