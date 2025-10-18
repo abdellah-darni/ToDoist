@@ -169,7 +169,8 @@ int load_tasks(sqlite3 *db, Tasks *tasks){
         Task tmp;
         tmp.id          = sqlite3_column_int(stmt, 0);
         tmp.title       = strdup((char *)sqlite3_column_text(stmt, 1));
-        tmp.desc        = strdup((char *)sqlite3_column_text(stmt, 2));
+        const unsigned char *desc_text = sqlite3_column_text(stmt, 2);
+        tmp.desc        = desc_text ? strdup((const char *) desc_text) : NULL;
         tmp.status      = sqlite3_column_int(stmt, 3);
         tmp.due_date    = sqlite3_column_int(stmt, 4);
         tmp.created_at  = sqlite3_column_int(stmt, 5);
@@ -424,3 +425,13 @@ int is_tag_exist(sqlite3 *db, const char *new_tag){
 
     return -1;
 }
+
+// int insert_new_task(sqlite3 *db, TaskFormData new_task){
+//     if (!db) return 0;
+
+//     sqlite3_stmt *stmt;
+//     int rc;
+//     char sql[512];
+
+
+// }
