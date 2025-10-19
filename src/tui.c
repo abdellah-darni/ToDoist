@@ -20,12 +20,6 @@ char *tasks_filters_list[] = {
     "Completed"
 };
 
-typedef struct {
-    char title[256];
-    char description[512];
-    long due_date;
-    char tag_name;
-} TaskFormData;
 
 int tasks_filters_count = 5;
 
@@ -785,7 +779,14 @@ void show_add_task_form(sqlite3 *db) {
                     TaskFormData new_task = {0};
 
                     strcpy(new_task.title, title);
-                    strcpy(new_task.description, trim_fieldbuf(field_buffer(fields[1], 0)));
+
+                    char *desc = trim_fieldbuf(field_buffer(fields[1], 0));
+                    if (desc && desc[0] != '\0'){
+                        strcpy(new_task.description, desc);
+                    }else{
+                        strcpy(new_task.description, "NULL");
+                    }
+                    
 
                     // Convert the string date to a unix timestamp
                     if (date && date[0] != '\0'){ 
@@ -801,6 +802,13 @@ void show_add_task_form(sqlite3 *db) {
                     }
 
                     strcpy(new_task.tag_name, trim_fieldbuf(field_buffer(fields[3], 0)));
+
+                    int rc = insert_new_task(db, new_task);
+
+                    mvwprintw(form_win, 17, 16, "RC = %d",rc);
+                    mvwprintw(form_win, 18, 16, "title: %s", new_task.title);
+                    mvwprintw(form_win, 19, 16, "desc: %s", new_task.description);
+                    mvwprintw(form_win, 20, 16, "date: %ld", new_task.due_date);
 
 
                     // insert_task(db, &new_task);
