@@ -432,11 +432,13 @@ int is_tag_exist(sqlite3 *db, const char *new_tag){
 int insert_new_task(sqlite3 *db, TaskFormData new_task){
     if (!db) return 1;
 
-    int tag_id = -1;
-    int new_added_task_id = -1;
+    sqlite3_int64 tag_id = -1;
+    sqlite3_int64 new_added_task_id = -1;
 
     sqlite3_stmt *stmt = NULL;
-    const char *insert_task_sql = "INSERT INTO tasks (title, description, due_date) VALUES(?, ?, ?);";
+    const char *insert_task_sql = "INSERT INTO tasks (title, description, due_date) VALUES(?, ?, ?) RETURNING id;";
+    const char *insert_tag_sql = "INSERT INTO tags (name) VALUES(?) RETURNING id;";
+    const char *tag_id_sql = "SELECT id from tags where name = ?;";
     int rc;
 
     rc = sqlite3_exec(db, "BEGIN TRANSACTION;", 0, 0, NULL);
@@ -445,6 +447,8 @@ int insert_new_task(sqlite3 *db, TaskFormData new_task){
         return 1;
     }
 
+
+    // add the new task
     rc = sqlite3_prepare_v2(db, insert_task_sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
@@ -460,22 +464,74 @@ int insert_new_task(sqlite3 *db, TaskFormData new_task){
         sqlite3_bind_int64(stmt, 3, (sqlite3_int64)new_task.due_date);
     }
 
-    rc = sqlite3_step(stmt);
-    if (rc != SQLITE_DONE){
+    if ((rc = sqlite3_step(stmt)) == SQLITE_ROW){
+        new_added_task_id = sqlite3_column_int64(stmt, 0);
+    } else {
         fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
         sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
         sqlite3_finalize(stmt);
         return 1;
     }
 
-    rc = sqlite3_exec(db, "COMMIT TRANSACTION;", 0, 0, NULL);
-    if (rc != SQLITE_OK) {
-        fprintf(stderr, "Failed to commit transaction: %s\n", sqlite3_errmsg(db));
+    if ((rc = sqlite3_step(stmt))!= SQLITE_DONE){
+        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+        sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
         sqlite3_finalize(stmt);
         return 1;
     }
 
     sqlite3_finalize(stmt);
+
+    // tag stuff
+    if (strcmp(new_task.tag_name, "None") != 0){
+        rc = sqlite3_prepare_v2(db, tag_id_sql, -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
+            sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
+            return 1;
+        }
+
+        sqlite3_bind_text(stmt, 1, new_task.tag_name, -1, SQLITE_TRANSIENT);
+        rc = sqlite3_step(stmt);
+
+        if (rc == SQLITE_DONE){
+            sqlite3_finalize(stmt);
+
+            rc = sqlite3_prepare_v2(db, insert_tag_sql, -1, &stmt, NULL);
+            if (rc != SQLITE_OK) {
+                fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
+                sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
+                return 1;
+            }
+            sqlite3_bind_text(stmt, 1, new_task.tag_name, -1, SQLITE_TRANSIENT);
+            if ((rc = sqlite3_step(stmt))== SQLITE_ROW){
+                tag_id = sqlite3_column_int64(stmt, 0);
+            } else {
+                fprintf(stderr, " 511: SQL error: %s\n", sqlite3_errmsg(db));
+                sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
+                sqlite3_finalize(stmt);
+                return 1;
+            }
+        } else if (rc == SQLITE_ROW){
+            tag_id = sqlite3_column_int64(stmt, 0);
+        }
+
+        if ((rc = sqlite3_step(stmt))!= SQLITE_DONE){
+            fprintf(stderr, "521: SQL error: %s\n", sqlite3_errmsg(db));
+            sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
+            sqlite3_finalize(stmt);
+            return 1;
+        }
+
+        sqlite3_finalize(stmt);
+
+    }
+
+    rc = sqlite3_exec(db, "COMMIT TRANSACTION;", 0, 0, NULL);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "Failed to commit transaction: %s\n", sqlite3_errmsg(db));
+        return 1;
+    }
 
     return 0;
 
