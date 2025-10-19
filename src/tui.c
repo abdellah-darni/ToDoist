@@ -659,13 +659,8 @@ void show_add_task_form(sqlite3 *db) {
     mvwprintw(form_win, 15, 16, "[%s] Press TAB to select", selected_tag);
     
     mvwprintw(form_win, 22, 2, "ENTER: Save | ESC: Cancel | ↑↓: Navigate | TAB on Tag: Select");
-    
-    
-    // mvwprintw(form_win, 22, 2, "Press ENTER to save, ESC to cancel, ↑↓ to navigate.");
-
 
     form_subwin = derwin(form_win, 14, 52, 4, 16);
-
 
     fields[0] = new_field(1, 50, 0, 0, 0, 0); //Title
     fields[1] = new_field(4, 50, 2, 0, 0, 0); // Descreption
@@ -805,14 +800,15 @@ void show_add_task_form(sqlite3 *db) {
 
                     int rc = insert_new_task(db, new_task);
 
-                    mvwprintw(form_win, 17, 16, "RC = %d",rc);
-                    mvwprintw(form_win, 18, 16, "title: %s", new_task.title);
-                    mvwprintw(form_win, 19, 16, "desc: %s", new_task.description);
-                    mvwprintw(form_win, 20, 16, "date: %ld", new_task.due_date);
-
-
-                    // insert_task(db, &new_task);
-                    // goto exit;
+                    if (!rc){
+                        mvwprintw(form_win, 18, 16, "Task saved!");
+                        wrefresh(form_win);
+                        napms(1000);
+                        goto exit;
+                    } else {
+                        mvwprintw(form_win, 18, 16, "Error: Failed to save task.");
+                        wrefresh(form_win); 
+                    }
                 }
                 break;
             case KEY_BACKSPACE:
@@ -839,6 +835,8 @@ void show_add_task_form(sqlite3 *db) {
         }
         wrefresh(form_win);
     }
+
+    exit:
     
     curs_set(0);
 
