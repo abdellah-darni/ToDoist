@@ -416,22 +416,67 @@ int is_tag_exist(sqlite3 *db, const char *new_tag){
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
         return -1;
     }
 
     if ((rc = sqlite3_step(stmt)) == SQLITE_ROW){
-        return sqlite3_column_int(stmt, 0);
+        int tmp = sqlite3_column_int(stmt, 0);
+        sqlite3_finalize(stmt);
+        return tmp;
     }
-
+    sqlite3_finalize(stmt);
     return -1;
 }
 
-// int insert_new_task(sqlite3 *db, TaskFormData new_task){
-//     if (!db) return 0;
+int insert_new_task(sqlite3 *db, TaskFormData new_task){
+    if (!db) return 1;
 
-//     sqlite3_stmt *stmt;
-//     int rc;
-//     char sql[512];
+    int tag_id = -1;
+    int new_added_task_id = -1;
 
+    sqlite3_stmt *stmt = NULL;
+    const char *insert_task_sql = "INSERT INTO tasks (title, description, due_date) VALUES(?, ?, ?);";
+    int rc;
 
-// }
+    rc = sqlite3_exec(db, "BEGIN TRANSACTION;", 0, 0, NULL);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+        return 1;
+    }
+
+    rc = sqlite3_prepare_v2(db, insert_task_sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
+        sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
+        return 1;
+    }
+
+    sqlite3_bind_text(stmt, 1, new_task.title, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, new_task.description, -1, SQLITE_TRANSIENT);
+    if(new_task.due_date == -1){
+        sqlite3_bind_null(stmt, 3);
+    } else {
+        sqlite3_bind_int64(stmt, 3, (sqlite3_int64)new_task.due_date);
+    }
+
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE){
+        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+        sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
+        sqlite3_finalize(stmt);
+        return 1;
+    }
+
+    rc = sqlite3_exec(db, "COMMIT TRANSACTION;", 0, 0, NULL);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "Failed to commit transaction: %s\n", sqlite3_errmsg(db));
+        sqlite3_finalize(stmt);
+        return 1;
+    }
+
+    sqlite3_finalize(stmt);
+
+    return 0;
+
+}

@@ -21,6 +21,13 @@ typedef struct _tasks{
     int task_count;
 } Tasks;
 
+typedef struct _TaskFormData{
+    char title[256];
+    char description[512];
+    long due_date;
+    char tag_name[31];
+} TaskFormData;
+
 
 
 
@@ -39,6 +46,8 @@ void create_no_tasks_message(char *buffer, size_t buffer_size, const char *where
 Task * task_placeholder(const char *title, const char *desc);
 
 int is_tag_exist(sqlite3 *db, const char *new_tag);
+
+int insert_new_task(sqlite3 *db, TaskFormData new_task);
 
 
 #endif
