@@ -115,10 +115,28 @@ int load_tags(sqlite3 *db, char ***tags_list, int *tag_count) {
     }
 
     sqlite3_finalize(stmt);
-    *tags_list = temp_list;
-    *tag_count = count;
+
+    free_tags_list(*tags_list, *tag_count);
+
+    if(count == 0){
+        free(temp_list);
+        *tags_list = NULL;
+        *tag_count = 0;
+
+    } else {
+        *tags_list = temp_list;
+        *tag_count = count;
+    }
 
     return 0;
+}
+
+void free_tags_list(char **tags_list, int tags_count){
+    if (!tags_list) return;
+    for (int i = 0; i < tags_count; i++){
+        free(tags_list[i]);
+    }
+    free(tags_list);
 }
 
 
