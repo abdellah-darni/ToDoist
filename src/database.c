@@ -439,6 +439,7 @@ int insert_new_task(sqlite3 *db, TaskFormData new_task){
     const char *insert_task_sql = "INSERT INTO tasks (title, description, due_date) VALUES(?, ?, ?) RETURNING id;";
     const char *insert_tag_sql = "INSERT INTO tags (name) VALUES(?) RETURNING id;";
     const char *tag_id_sql = "SELECT id from tags where name = ?;";
+    const char *task_tag_association_sql = "INSERT INTO task_tags (task_id, tag_id) VALUES(?, ?);";
     int rc;
 
     rc = sqlite3_exec(db, "BEGIN TRANSACTION;", 0, 0, NULL);
@@ -482,7 +483,8 @@ int insert_new_task(sqlite3 *db, TaskFormData new_task){
 
     sqlite3_finalize(stmt);
 
-    // tag stuff
+    // tag stuff, if there is a tag try to retrive the id if we get a row that mean that the tag already exist in the table so just retrive the id 
+    // if we didn't get a row that mean the tag doesn't exist in the table/db so insert it and retrive the id
     if (strcmp(new_task.tag_name, "None") != 0){
         rc = sqlite3_prepare_v2(db, tag_id_sql, -1, &stmt, NULL);
         if (rc != SQLITE_OK) {
@@ -525,6 +527,24 @@ int insert_new_task(sqlite3 *db, TaskFormData new_task){
 
         sqlite3_finalize(stmt);
 
+        // the assocation between the task and the tag
+        rc = sqlite3_prepare_v2(db, task_tag_association_sql, -1, &stmt, NULL);
+        if (rc != SQLITE_OK) {
+            fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
+            sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
+            return 1;
+        }
+
+        sqlite3_bind_int64(stmt, 1, new_added_task_id);
+        sqlite3_bind_int64(stmt, 2, tag_id);
+
+        if ((rc = sqlite3_step(stmt))!= SQLITE_DONE){
+            fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+            sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
+            sqlite3_finalize(stmt);
+            return 1;
+        }
+        sqlite3_finalize(stmt);
     }
 
     rc = sqlite3_exec(db, "COMMIT TRANSACTION;", 0, 0, NULL);
