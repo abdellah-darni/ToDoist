@@ -1,7 +1,9 @@
 #build artifacts
 build/
 bin/
+logs/
 
 *~
 
 .vscode
+.DS_Store

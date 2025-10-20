@@ -45,7 +45,7 @@ int main(){
 
     free_tasks(&all_tasks);
 
-    // init_tui(db);
+    init_tui(db);
    
 
     return 0;

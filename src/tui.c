@@ -1,11 +1,16 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <time.h>
 #include <string.h>
 #include <stdlib.h>
 #include <sqlite3.h>
+#include <panel.h>
+#include <form.h>
+#include <locale.h> 
 
 #include "tui.h"
 #include "database.h"
+#include "utils.h"
 
 char *tasks_filters_list[] = {
     "All",
@@ -14,6 +19,7 @@ char *tasks_filters_list[] = {
     "Over-Due",
     "Completed"
 };
+
 
 int tasks_filters_count = 5;
 
@@ -29,9 +35,17 @@ FocusableMenu *focusable_menus = NULL;
 int num_focusable_menus = 0;
 int current_focus_idx = 0;
 
+int selected_filter_index = 0;
+int selected_tag_index = -1; 
+
 int src_width, src_height;
 
+int tags_count;
+char **tags_list = NULL;
+
 void init_tui(sqlite3 *db){
+
+    setlocale(LC_ALL, "");
 
     ITEM  **filter_items = NULL;
     MENU *filter_menu = NULL;
@@ -40,8 +54,7 @@ void init_tui(sqlite3 *db){
     ITEM **tags_items;
     MENU *tags_menu;
     WINDOW *tags_bar_win;
-    int tags_count;
-    char **tags_list = NULL;
+
 
     TasksPane tasks_pane = {
         .win    = NULL,
@@ -77,14 +90,14 @@ void init_tui(sqlite3 *db){
     add_focusable_window(tasks_pane.win, tasks_pane.menu);
 
     focusable_menus[0].is_focused = 1;
-    update_window_focus();
+    update_menu_highlighting();
 
 
     while((ch = getch())!='q'){
         update_time_top_bar(top_bar, 1, src_width);
 
         if (ch == 9){
-            switch_focus();
+            switch_focus(task_details_win);
             continue;
         }
 
@@ -94,32 +107,110 @@ void init_tui(sqlite3 *db){
         switch (c)
         {
             case 9:
-                switch_focus();
+                switch_focus(task_details_win);
                 continue;
 
             case KEY_UP:
-                menu_driver(current_menu -> menu, REQ_UP_ITEM);
+                if (current_menu->menu && item_count(current_menu->menu) > 0) {
+                    menu_driver(current_menu -> menu, REQ_UP_ITEM);
 
-                if (current_focus_idx == 2){
-                    show_task_details(task_details_win, (Task *)item_userptr(current_item(current_menu -> menu)));
+                    if (current_focus_idx == 2){
+                        show_task_details(task_details_win, (Task *)item_userptr(current_item(current_menu -> menu)));
+                    }
                 }
 
                 break;
 
             case KEY_DOWN:
-                menu_driver(current_menu -> menu, REQ_DOWN_ITEM);
+                if (current_menu->menu && item_count(current_menu->menu) > 0) {
+                    menu_driver(current_menu -> menu, REQ_DOWN_ITEM);
 
-                if (current_focus_idx == 2){
-                    show_task_details(task_details_win, (Task *)item_userptr(current_item(current_menu -> menu)));
+                    if (current_focus_idx == 2){
+                        show_task_details(task_details_win, (Task *)item_userptr(current_item(current_menu -> menu)));
+                    }
                 }
 
                 break;
 
-            case 10:
-				clrtoeol();
-				mvprintw(src_height-3, 1, "Item selected is : %s", item_name(current_item(current_menu -> menu)));
-				pos_menu_cursor(current_menu -> menu);
-				break;
+            case 10: {
+                ITEM *current_item_ptr = current_item(current_menu->menu);
+                if (!current_item_ptr) break;
+                
+                const char *sel = item_name(current_item_ptr);
+
+                if (current_focus_idx == 0){ // Filter menu
+                    const char *where;
+                    int current_item_index = item_index(current_item_ptr);
+                    
+                    if      (strcmp(sel, "All")      == 0) where = "1=1";
+                    else if (strcmp(sel, "Today")    == 0) where = "date(due_date, 'unixepoch')=date('now')";
+                    else if (strcmp(sel, "Tomorrow") == 0) where = "date(due_date, 'unixepoch')=date('now','+1 day')";
+                    else if (strcmp(sel, "Over-Due") == 0) where = "date(due_date, 'unixepoch')<date('now')";
+                    else where = "t.status=1";
+
+                    mark_selected_filter(current_item_index);
+                    
+                    reload_tasks_menu(db, &tasks_pane, where);
+
+                    // Switch focus to tasks menu
+                    for (int i = 0; i < num_focusable_menus; i++){ 
+                        focusable_menus[i].is_focused = 0;
+                    }
+                    current_focus_idx = 2;
+                    focusable_menus[2].is_focused = 1;
+                    update_menu_highlighting();
+
+                    // Show details of first task
+                    if (tasks_pane.menu && item_count(tasks_pane.menu) > 0) {
+                        ITEM *first_task = current_item(tasks_pane.menu);
+                        if (first_task) {
+                            show_task_details(task_details_win, (Task *)item_userptr(first_task));
+                        }
+                    }
+
+                } else if (current_focus_idx == 1){ // Tags menu
+                    int current_item_index = item_index(current_item_ptr);
+                    char where[256];
+                    snprintf(where, sizeof(where),"tg.name='%s'", sel);
+                    
+                    mark_selected_tag(current_item_index);
+                    
+                    reload_tasks_menu(db, &tasks_pane, where);
+                    
+                    for (int i = 0; i < num_focusable_menus; i++){ 
+                        focusable_menus[i].is_focused = 0;
+                    }
+                    current_focus_idx = 2;
+                    focusable_menus[2].is_focused = 1;
+                    update_menu_highlighting();
+
+                    if (tasks_pane.menu && item_count(tasks_pane.menu) > 0) {
+                        ITEM *first_task = current_item(tasks_pane.menu);
+                        if (first_task) {
+                            show_task_details(task_details_win, (Task *)item_userptr(first_task));
+                        }
+                    }
+                }
+                
+                pos_menu_cursor(current_menu -> menu);
+                break;
+            }
+            case 'a':
+            case 'A':
+                show_add_task_form(db);
+    
+                // Refresh all windows after form closes
+                update_menu_highlighting();
+                
+                // Update task details if on tasks menu
+                if (current_focus_idx == 2 && focusable_menus[2].menu) {
+                    ITEM *current = current_item(focusable_menus[2].menu);
+                    if (current) {
+                        show_task_details(task_details_win, (Task *)item_userptr(current));
+                    }
+                }
+                break;
+
             case 'q':
                 cleanup_menus();
                 destroy_win(top_bar);
@@ -205,38 +296,21 @@ void add_focusable_window(WINDOW *win, MENU *menu){
     focusable_menus[num_focusable_menus - 1].is_focused = 0;
 }
 
-void update_window_focus(){
-    for(int i = 0; i < num_focusable_menus; i++){
-        FocusableMenu *menu_item = &focusable_menus[i];
-
-        if(menu_item -> is_focused){
-            set_menu_fore(menu_item -> menu, A_REVERSE);
-            set_menu_back(menu_item -> menu, A_NORMAL);
-            set_menu_mark(menu_item -> menu, " * ");
-            
-            wattron(menu_item -> win, A_BOLD);
-            box(menu_item -> win, 0, 0);
-            wattroff(menu_item -> win, A_BOLD);
-        }else{
-            set_menu_fore(menu_item -> menu, A_DIM);
-            set_menu_back(menu_item -> menu, A_DIM);
-            set_menu_mark(menu_item -> menu, "   ");
-
-            box(menu_item -> win, 0, 0);
-        }
-        wrefresh(menu_item -> win);
-    }
-    refresh();
-}
-
-void switch_focus(){
+void switch_focus(WINDOW *task_details_win){
     if (num_focusable_menus <= 1) return;
 
     focusable_menus[current_focus_idx].is_focused = 0;
     current_focus_idx = (current_focus_idx + 1) % num_focusable_menus;
     focusable_menus[current_focus_idx].is_focused = 1;
 
-    update_window_focus();
+    update_menu_highlighting();
+
+    if (current_focus_idx == 2 && focusable_menus[2].menu){
+        ITEM *current = current_item(focusable_menus[2].menu);
+        if (current){
+            show_task_details(task_details_win, (Task *)item_userptr(current));
+        }
+    }
 }
 
 void cleanup_menus(){
@@ -251,7 +325,6 @@ void cleanup_menus(){
     num_focusable_menus = 0;
     current_focus_idx = 0;
 }
-
 
 void print_in_middle(WINDOW *win, int starty, int startx, int src_width, char *string){
 
@@ -277,42 +350,71 @@ void print_in_middle(WINDOW *win, int starty, int startx, int src_width, char *s
 
 void reload_tasks_menu(sqlite3 *db, TasksPane *tasks_pane, const char *where_clause){
 
-    ITEM **old_items = (ITEM **)menu_items(tasks_pane->menu);
-    int old_item_count = tasks_pane->tasks_struct.task_count;
+    int window_width = (src_width - SIDE_BAR_WIDTH) / 2;
+
     unpost_menu(tasks_pane->menu);
-    free_menu(tasks_pane->menu);
-    for(int i = 0; i < old_item_count; i++){
-        free_item(old_items[i]);
-    }
-    free(old_items);
 
-    load_tasks_fillterd(db, tasks_pane, where_clause);
+    ITEM **old_items = (ITEM **)menu_items(tasks_pane->menu);
+    int old_count = tasks_pane->tasks_struct.task_count;
 
-    int tasks_count = tasks_pane->tasks_struct.task_count+1;
-    ITEM **new_items = calloc(tasks_count+1, sizeof(ITEM*));
+    int loading_response = load_tasks_fillterd(db, &tasks_pane->tasks_struct, where_clause);
+    int tasks_count = tasks_pane->tasks_struct.task_count;
+
+    werase(tasks_pane->win);
+
+    box(tasks_pane->win, 0, 0);
+
+    print_in_middle(tasks_pane->win, 1, 0, window_width, "TASKS");
+    mvwaddch(tasks_pane->win, 2, 0, ACS_LTEE);
+    mvwhline(tasks_pane->win, 2, 1, ACS_HLINE, window_width - 2);
+    mvwaddch(tasks_pane->win, 2, window_width - 1, ACS_RTEE);
+
+    tasks_pane->items = calloc(tasks_count+1, sizeof(*tasks_pane->items));
+    // ToDo : check for mem allocation errors and set a fall back  
+
 
     for (int i = 0; i < tasks_count; i++){
-        new_items[i] = new_item(tasks_pane->tasks_struct.task_list[i].title, NULL);
-        set_menu_userptr(new_items[i], &tasks_pane->tasks_struct.task_list[i]);
+        tasks_pane->items[i] = new_item(tasks_pane->tasks_struct.task_list[i].title, NULL);
+        set_item_userptr(tasks_pane->items[i], &tasks_pane->tasks_struct.task_list[i]);
     }
-    new_items[tasks_count] = NULL;
-
+    tasks_pane->items[tasks_count] = NULL;
     
+    set_menu_items(tasks_pane->menu, tasks_pane->items);
 
-    return;
+    if (old_items){
+        for(int i = 0; i < old_count; i++){
+            if (old_items[i]){
+                free_item(old_items[i]);
+            }
+        }
+        free(old_items);
+    }
+
+
+    post_menu(tasks_pane->menu);
+    wrefresh(tasks_pane->win);
 
 }
 
+void show_task_details(WINDOW *win, Task *t) {
+    if (!t) {
+        werase(win);
+        box(win, 0,0);
+        print_in_middle(win, 1, 0, (src_width-SIDE_BAR_WIDTH)/2, "Details");
+        mvwaddch(win, 2, 0, ACS_LTEE);
+        mvwhline(win, 2, 1, ACS_HLINE, ((src_width-SIDE_BAR_WIDTH)/2)-2);
+        mvwaddch(win, 2, ((src_width-SIDE_BAR_WIDTH)/2)-1, ACS_RTEE);
+        mvwprintw(win, 4, 2, "No task selected");
+        wrefresh(win);
+        return;
+    }
 
-
-void show_task_details(WINDOW *win ,Task *t) {
     werase(win);
     box(win, 0,0);
 
-    
     mvwaddch(win, 2, 0, ACS_LTEE);
-	mvwhline(win, 2, 1, ACS_HLINE, ((src_width-SIDE_BAR_WIDTH)/2)-2);
-	mvwaddch(win, 2, ((src_width-SIDE_BAR_WIDTH)/2)-1, ACS_RTEE);
+    mvwhline(win, 2, 1, ACS_HLINE, ((src_width-SIDE_BAR_WIDTH)/2)-2);
+    mvwaddch(win, 2, ((src_width-SIDE_BAR_WIDTH)/2)-1, ACS_RTEE);
 
     mvwprintw(win, 3, 2, "ID:   %d", t->id);
     mvwprintw(win, 4, 2, "Title: %s", t->title);
@@ -339,12 +441,10 @@ void show_task_details(WINDOW *win ,Task *t) {
     wrefresh(win);
 }
 
-
 WINDOW* create_top_bar() {
     WINDOW *top_bar = create_newwin(3, src_width, 0, 0);
     return top_bar;
 }
-
 
 void create_filter_menu(ITEM ***filter_items, MENU **filter_menu, WINDOW **filters_bar_win) {
     *filter_items = (ITEM **)calloc(tasks_filters_count + 1, sizeof(ITEM *));
@@ -400,6 +500,7 @@ void create_tags_menu(sqlite3 *db, ITEM ***tags_items, MENU **tags_menu, WINDOW 
 }
 
 void create_tasks_menu(sqlite3 *db, TasksPane *tasks_pane) {
+
     load_tasks(db, &tasks_pane->tasks_struct);
 
     tasks_pane->items = (ITEM **)calloc(tasks_pane->tasks_struct.task_count + 1, sizeof(ITEM *));
@@ -414,8 +515,8 @@ void create_tasks_menu(sqlite3 *db, TasksPane *tasks_pane) {
     int submenu_height = window_height - 6;
     int submenu_width = window_width - 4;
 
-    tasks_pane->menu = new_menu((ITEM **)tasks_pane->items);
     tasks_pane->win = create_newwin(window_height, window_width, 3, SIDE_BAR_WIDTH);
+    tasks_pane->menu = new_menu((ITEM **)tasks_pane->items);
     keypad(tasks_pane->win, TRUE);
     
     set_menu_win(tasks_pane->menu, tasks_pane->win);
@@ -448,4 +549,490 @@ WINDOW* create_task_details_window() {
     
     wrefresh(task_details_win);
     return task_details_win;
+}
+
+void update_menu_highlighting(void){
+    for (int i = 0; i < num_focusable_menus; i++){
+        FocusableMenu *menu_item = &focusable_menus[i];
+        
+        if(menu_item->is_focused){
+            // Focused menu
+            set_menu_fore(menu_item->menu, A_REVERSE | A_BOLD);
+            set_menu_back(menu_item->menu, A_NORMAL);
+            set_menu_mark(menu_item->menu, " * ");
+            
+            wattron(menu_item->win, A_BOLD);
+            box(menu_item->win, 0, 0);
+            wattroff(menu_item->win, A_BOLD);
+        } else {
+            // Non-focused menu
+            set_menu_fore(menu_item->menu, A_DIM);
+            set_menu_back(menu_item->menu, A_DIM);
+            
+            // Show selection indicator for filters/tags even when not focused
+            if(i == 0 && selected_filter_index >= 0) {
+                // Filter menu show which filter is active
+                set_menu_mark(menu_item->menu, " > ");
+                // Position cursor on selected filter
+                ITEM **items = menu_items(menu_item->menu);
+                int item_count_val = item_count(menu_item->menu);
+                if (selected_filter_index < item_count_val) {
+                    set_current_item(menu_item->menu, items[selected_filter_index]);
+                }
+            } else if(i == 1 && selected_tag_index >= 0) {
+                // Tag menu
+                set_menu_mark(menu_item->menu, " > ");
+                
+                ITEM **items = menu_items(menu_item->menu);
+                int item_count_val = item_count(menu_item->menu);
+                if (selected_tag_index < item_count_val) {
+                    set_current_item(menu_item->menu, items[selected_tag_index]);
+                }
+            } else {
+                set_menu_mark(menu_item->menu, "   ");
+            }
+            
+            box(menu_item->win, 0, 0);
+        }
+        wrefresh(menu_item->win);
+    }
+    refresh();
+}
+
+void mark_selected_filter(int selected_index) {
+    selected_filter_index = selected_index;
+    selected_tag_index = -1;
+}
+
+void mark_selected_tag(int selected_index) {
+    selected_tag_index = selected_index;
+    selected_filter_index = -1;
+}
+
+// form:
+
+WINDOW *create_form_window(void){
+    int form_height = 24;
+    int form_width = 70;
+    int start_y = (src_height - form_height)/2;
+    int start_x = (src_width - form_width)/2;
+
+    WINDOW *form_win = newwin(form_height, form_width, start_y, start_x);
+    box(form_win, 0, 0);
+
+    wattron(form_win, A_BOLD);
+    print_in_middle(form_win, 1, 0, form_width, "Add New Task");
+    wattroff(form_win, A_BOLD);
+
+    mvwaddch(form_win, 2, 0, ACS_LTEE);
+    mvwhline(form_win, 2, 1, ACS_HLINE, form_width - 2);
+    mvwaddch(form_win, 2, form_width - 1, ACS_RTEE);
+
+
+    return form_win;
+}
+
+void destroy_form_window(WINDOW *form_win) {
+    werase(form_win);
+    wrefresh(form_win);
+    delwin(form_win);
+    touchwin(stdscr);
+    refresh();
+}
+
+void show_add_task_form(sqlite3 *db) {
+    FIELD *fields[5];
+    FORM *form;
+    WINDOW *form_win, *form_subwin;
+    PANEL *form_panel;
+
+    form_win = create_form_window();
+    keypad(form_win, TRUE);
+
+    char selected_tag[31] = "None"; // the deffault tag is none (no tag) 
+
+    mvwprintw(form_win, 4, 2, "Title:");
+    mvwprintw(form_win, 6, 2, "Description: ");
+    mvwprintw(form_win, 12, 2, "Due Date:");
+    
+    mvwprintw(form_win, 15, 2, "Tag:");
+    mvwprintw(form_win, 15, 16, "[%s] Press TAB to select", selected_tag);
+    
+    mvwprintw(form_win, 22, 2, "ENTER: Save | ESC: Cancel | ↑↓: Navigate | TAB on Tag: Select");
+
+    form_subwin = derwin(form_win, 14, 52, 4, 16);
+
+    fields[0] = new_field(1, 50, 0, 0, 0, 0); //Title
+    fields[1] = new_field(4, 50, 2, 0, 0, 0); // Descreption
+    fields[2] = new_field(1, 16, 8, 0, 0, 0); // Due date
+    fields[3] = new_field(1, 30, 11, 0, 0, 0); // Tag
+    fields[4] = NULL;
+
+    for(int i = 0; i < 4; i++) {
+        set_field_back(fields[i], A_UNDERLINE);
+        field_opts_off(fields[i], O_AUTOSKIP);
+    }
+
+    field_opts_off(fields[3], O_EDIT);
+    // field_opts_off(field[3], O_ACTIVE);
+    set_field_buffer(fields[3], 0, selected_tag);
+
+    form = new_form(fields);
+    set_form_win(form, form_win);
+    set_form_sub(form, form_subwin);
+    post_form(form);
+
+    form_panel = new_panel(form_win);
+    top_panel(form_panel);
+    
+    update_panels();
+    doupdate();
+
+    wattron(form_win, A_DIM);
+    mvwprintw(form_win, 12, 35, "HH:MM DD/MM/YYYY");
+    wattroff(form_win, A_DIM);
+    wrefresh(form_win);
+
+    curs_set(1);
+    pos_form_cursor(form);
+    
+    int ch;
+    int current_field = 0;
+
+    while ((ch = wgetch(form_win)) != 27) {
+        mvwprintw(form_win, 17, 16, "%-45s", "");
+        wrefresh(form_win);
+
+        switch (ch) {
+            case KEY_DOWN:
+                if (current_field < 3){
+                    form_driver(form, REQ_NEXT_FIELD);
+                    form_driver(form, REQ_END_LINE);
+                    current_field++;
+                }
+                break;
+            case KEY_UP:
+                if (current_field > 0){
+                    form_driver(form, REQ_PREV_FIELD);
+                    form_driver(form, REQ_END_LINE);
+                    current_field--;
+                }
+                break;
+            case 9:  // TAB key
+                if (current_field == 3) {  // On tag field
+                    show_tag_menu(form_win, selected_tag, tags_list, tags_count);
+                    if (strcmp(selected_tag, "-- Add new tag --") == 0){
+                        show_add_tag_win(form_win, selected_tag, db);
+                    }
+
+                    set_field_buffer(fields[3], 0, selected_tag);
+                    mvwprintw(form_win, 15, 16, "[%-15s] Press TAB to select", selected_tag);
+                    wrefresh(form_win);
+                } else {
+
+                    if (current_field < 3) {
+                        form_driver(form, REQ_NEXT_FIELD);
+                        form_driver(form, REQ_END_LINE);
+                        current_field++;
+                    }
+                }
+                break;
+            case 10:
+                if (current_field < 3) {
+                    form_driver(form, REQ_NEXT_FIELD);
+                    form_driver(form, REQ_END_LINE);
+                    current_field++;
+                } else {
+                    form_driver(form, REQ_VALIDATION);
+
+                    char *title = trim_fieldbuf(field_buffer(fields[0], 0));
+
+                    if (!title || title[0] == '\0'){
+                        mvwprintw(form_win, 17, 16, "Title cannot be empty. Please enter a title.");
+                        current_field = 0;
+                        set_current_field(form, fields[0]);
+                        pos_form_cursor(form);
+                        wrefresh(form_win);
+                        free(title);
+                        continue;
+                    }
+
+                    char *date = trim_fieldbuf(field_buffer(fields[2], 0));
+
+                    if (date && date[0] != '\0'){ // the due date is optional
+                        if(!validate_datetime(date)){
+                            mvwprintw(form_win, 17, 16, "Invalid date. Use HH:MM DD/MM/YYYY.");
+                            current_field = 2;
+                            set_current_field(form, fields[2]);
+                            pos_form_cursor(form);
+                            wrefresh(form_win);
+                            free(date);
+                            continue;
+                        }
+                    }
+                    
+                    TaskFormData new_task = {0};
+
+                    strcpy(new_task.title, title);
+
+                    char *desc = trim_fieldbuf(field_buffer(fields[1], 0));
+                    if (desc && desc[0] != '\0'){
+                        strcpy(new_task.description, desc);
+                    }else{
+                        strcpy(new_task.description, "NULL");
+                    }
+                    
+
+                    // Convert the string date to a unix timestamp
+                    if (date && date[0] != '\0'){ 
+                        struct tm tm_info = {.tm_sec=0};
+                        char * res = strptime(date, "%H:%M %d/%m/%Y", &tm_info);
+                        if (res != NULL){
+                            new_task.due_date = mktime(&tm_info);
+                        } else {
+                            new_task.due_date = -1;
+                        }
+                    } else {
+                        new_task.due_date = -1;
+                    }
+
+                    strcpy(new_task.tag_name, trim_fieldbuf(field_buffer(fields[3], 0)));
+
+                    int rc = insert_new_task(db, new_task);
+
+                    if (!rc){
+                        mvwprintw(form_win, 18, 16, "Task saved!");
+                        wrefresh(form_win);
+                        napms(1000);
+                        goto exit;
+                    } else {
+                        mvwprintw(form_win, 18, 16, "Error: Failed to save task.");
+                        wrefresh(form_win); 
+                    }
+                }
+                break;
+            case KEY_BACKSPACE:
+            case 127:
+            case 8:
+                form_driver(form, REQ_DEL_PREV);
+                break;
+                
+            case KEY_DC:  // Delete key
+                form_driver(form, REQ_DEL_CHAR);
+                break;
+                
+            case KEY_LEFT:
+                form_driver(form, REQ_PREV_CHAR);
+                break;
+                
+            case KEY_RIGHT:
+                form_driver(form, REQ_NEXT_CHAR);
+                break;
+
+            default:
+                form_driver(form, ch);
+                break;
+        }
+        wrefresh(form_win);
+    }
+
+    exit:
+    
+    curs_set(0);
+
+    // Cleanup
+    unpost_form(form);
+    free_form(form);
+    for(int i = 0; i < 3; i++) {
+        free_field(fields[i]);
+    }
+
+    hide_panel(form_panel);
+    del_panel(form_panel);
+    delwin(form_subwin);
+    destroy_form_window(form_win);
+}
+
+void show_tag_menu(WINDOW *parent_win,char *selected_tag, char **tags, int tag_count) {
+    
+    int menu_height = 25 + 5;
+    int menu_width = 30;
+    int start_y = (getmaxy(parent_win) - menu_height) / 2;
+    int start_x = (getmaxx(parent_win) - menu_width) / 2;
+
+    curs_set(0);
+    
+    WINDOW *menu_win = newwin(menu_height, menu_width, getbegy(parent_win) + start_y, getbegx(parent_win) + start_x);
+    
+    box(menu_win, 0, 0);
+    mvwprintw(menu_win, 1, 2, "Select Tag (↑↓ ENTER)");
+    mvwaddch(menu_win, 2, 0, ACS_LTEE);
+    mvwhline(menu_win, 2, 1, ACS_HLINE, menu_width - 2);
+    mvwaddch(menu_win, 2, menu_width - 1, ACS_RTEE);
+
+    WINDOW *menu_subwin = derwin(menu_win, 26, 26, 3, 2);
+    
+    ITEM **menu_items = (ITEM **)calloc(tag_count+3, sizeof(ITEM *));
+
+    menu_items[0] = new_item("None", NULL);
+    menu_items[1] = new_item("-- Add new tag --", NULL);
+    for (int i = 0; i < tag_count; i++) {
+        menu_items[i+2] = new_item(tags[i], NULL);
+    }
+    menu_items[tag_count+2] = NULL;
+
+    MENU *the_menu =  new_menu(menu_items);
+    
+    set_menu_win(the_menu, menu_win);
+    set_menu_sub(the_menu, menu_subwin);
+    set_menu_mark(the_menu, " > ");
+    set_menu_format(the_menu, 26, 1);
+
+    post_menu(the_menu);
+
+    PANEL *menu_panel = new_panel(menu_win);
+
+    int ch;
+    
+    keypad(menu_win, TRUE);
+
+    update_panels();
+    doupdate();
+    
+    while (1) {
+        ch = wgetch(menu_win);
+        
+        switch (ch) {
+            case KEY_UP:
+                menu_driver(the_menu, REQ_PREV_ITEM);
+                break;
+            case KEY_DOWN:
+                menu_driver(the_menu, REQ_NEXT_ITEM);
+                break;
+            case 10:
+                strcpy(selected_tag, item_name(current_item(the_menu)));
+                goto exit_menu;
+                break;
+            case 27:
+                if (strcmp(selected_tag, "-- Add new tag --") == 0){
+                    strcpy(selected_tag, "None");
+                }
+                goto exit_menu;
+                break;
+        }
+    }
+    
+exit_menu:
+    curs_set(1);
+    hide_panel(menu_panel);
+    unpost_menu(the_menu);
+    free_menu(the_menu);
+
+    for (int i = 0; i < tag_count+3; i++){
+        free_item(menu_items[i]);
+    }
+    free(menu_items);
+
+    del_panel(menu_panel);
+    delwin(menu_subwin);
+    delwin(menu_win);
+    update_panels();
+    doupdate();
+
+    return ;
+}
+
+void show_add_tag_win(WINDOW *parent_win, char *selected_tag, sqlite3 *db){
+
+    int win_height = 12;
+    int win_width = 35;
+    int start_y = (getmaxy(parent_win) - win_height) / 2;
+    int start_x = (getmaxx(parent_win) - win_width) / 2;
+    WINDOW *add_tag_win = newwin(win_height, win_width, getbegy(parent_win) + start_y, getbegx(parent_win) + start_x);
+
+    keypad(add_tag_win, TRUE);
+
+    box(add_tag_win, 0, 0);
+    mvwprintw(add_tag_win, 1, 12, "Add New Tag");
+    mvwaddch(add_tag_win, 2, 0, ACS_LTEE);
+    mvwhline(add_tag_win, 2, 1, ACS_HLINE, win_width - 2);
+    mvwaddch(add_tag_win, 2, win_width - 1, ACS_RTEE);
+
+    mvwprintw(add_tag_win, 4, 1, "Tag name: ");
+    mvwprintw(add_tag_win, 10, 1, "ENTER: Save | ESC: Cancel");
+
+    PANEL *add_tag_panel = new_panel(add_tag_win);
+
+    update_panels();
+    doupdate();
+
+    char input[31] = "";
+    int pos = 0;
+    int ch;
+
+    
+    curs_set(1);
+
+    while(1){
+        
+        mvwprintw(add_tag_win, 6, 2,"%-30s", "");
+        mvwprintw(add_tag_win, 6, 2,"%s", input);
+        wmove(add_tag_win, 6, 2 + pos);
+        wrefresh(add_tag_win);
+
+        ch = wgetch(add_tag_win);
+
+        switch (ch)
+        {
+        case 10:
+            if (pos > 0){
+                strcpy(selected_tag, input);
+                int exists = is_tag_exist(db, selected_tag);
+                if (exists == -1){
+                    mvwprintw(add_tag_win, 8, 1, "Error checking tag existence!");
+                }else if (exists == 0){
+                    hide_panel(add_tag_panel);
+                    del_panel(add_tag_panel);
+                    delwin(add_tag_win);
+                
+                    return ;
+                }else{
+                    mvwprintw(add_tag_win, 8, 1, "The tag \"%s\" already exist...", selected_tag);
+                }
+            }
+            break;
+        case 27:
+            strcpy(selected_tag, "None");
+            hide_panel(add_tag_panel);
+            del_panel(add_tag_panel);
+            delwin(add_tag_win);
+
+            return;
+                
+            break;
+        case KEY_BACKSPACE:
+        case 127:
+        case 8:
+            if (pos > 0){
+                input[pos] = '\0';
+                pos--;
+                input[pos] = '\0';
+            }
+            break;
+        default:
+            if (ch >= 32 && ch <= 126 && pos < 30){
+                input[pos] = ch;
+                pos++;
+                input[pos] = '\0';
+            }
+            break;
+        }
+    }
+
+    
+    hide_panel(add_tag_panel);
+    del_panel(add_tag_panel);
+    delwin(add_tag_win);
+
+    return;
 }
