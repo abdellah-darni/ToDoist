@@ -20,10 +20,7 @@ char *tasks_filters_list[] = {
     "Completed"
 };
 
-
 int tasks_filters_count = 5;
-
-
 
 typedef struct _FocusableMenu {
     WINDOW *win;
@@ -40,7 +37,7 @@ int selected_tag_index = -1;
 
 int src_width, src_height;
 
-int tags_count;
+int tags_count = 0;
 char **tags_list = NULL;
 
 void init_tui(sqlite3 *db){
@@ -93,13 +90,8 @@ void init_tui(sqlite3 *db){
     update_menu_highlighting();
 
 
-    while((ch = getch())!='q'){
+    while(1){
         update_time_top_bar(top_bar, 1, src_width);
-
-        if (ch == 9){
-            switch_focus(task_details_win);
-            continue;
-        }
 
         FocusableMenu *current_menu = &focusable_menus[current_focus_idx];
         c = wgetch(current_menu -> win);
