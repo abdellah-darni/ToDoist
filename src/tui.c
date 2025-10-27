@@ -12,7 +12,7 @@
 #include "database.h"
 #include "utils.h"
 
-char *tasks_filters_list[] = {
+const char *FILTER_NAMES[] = {
     "All",
     "Today",
     "Tomorrow",
@@ -20,211 +20,590 @@ char *tasks_filters_list[] = {
     "Completed"
 };
 
-int tasks_filters_count = 5;
-
-typedef struct _FocusableMenu {
-    WINDOW *win;
-    MENU *menu;
-    int is_focused;
-} FocusableMenu;
-
-FocusableMenu *focusable_menus = NULL;
-int num_focusable_menus = 0;
-int current_focus_idx = 0;
-
-int selected_filter_index = 0;
-int selected_tag_index = -1; 
+const int FILTER_COUNT = sizeof(FILTER_NAMES) / sizeof(char *);
 
 int src_width, src_height;
 
-int tags_count = 0;
-char **tags_list = NULL;
+AppState app_state = {0};
+
+void init_app_state(sqlite3 *db){
+    app_state.db = db;
+    app_state.mode = VIEW_MODE_ALL;
+    app_state.current_filter = strdup("1=1");
+    app_state.active_filter_index = 0;
+    app_state.active_tag_index = -1;
+    app_state.selected_tag_name = NULL;
+    app_state.menus = NULL;
+    app_state.current_focus_idx = 0;
+}
 
 void init_tui(sqlite3 *db){
 
     setlocale(LC_ALL, "");
-
-    ITEM  **filter_items = NULL;
-    MENU *filter_menu = NULL;
-    WINDOW *filters_bar_win = NULL;
-    
-    ITEM **tags_items;
-    MENU *tags_menu;
-    WINDOW *tags_bar_win;
-
-
-    TasksPane tasks_pane = {
-        .win    = NULL,
-        .menu   = NULL,
-        .items  = NULL,
-        .tasks_struct = {.task_count = 0, .task_list = NULL}
-    };
-
-
-    WINDOW *task_details_win = NULL;
 
     initscr();          
     cbreak();
     noecho();
     keypad(stdscr, TRUE);
     nodelay(stdscr, TRUE);
+    curs_set(0);
     refresh();
 
-    int ch ,c;
+    getmaxyx(stdscr, src_height, src_width);
 
-    curs_set(0);
-    getmaxyx(stdscr, src_height, src_width); 
+    init_app_state(db);
 
+    app_state.top_bar_win = create_newwin(3, src_width, 0, 0);
+    app_state.top_bar_panel = new_panel(app_state.top_bar_win);
 
-    WINDOW *top_bar = create_top_bar();
-    create_filter_menu(&filter_items, &filter_menu, &filters_bar_win);
-    create_tags_menu(db, &tags_items, &tags_menu, &tags_bar_win, &tags_list, &tags_count);
-    create_tasks_menu(db, &tasks_pane);
-    task_details_win = create_task_details_window();
+    FocusableMenu *filters_menu = creat_focusable_menu(MENU_TYPE_FILTER, "Filters", 10, SIDE_BAR_WIDTH, 3, 0);
+    load_filters_data(filters_menu);
+    register_menu(filters_menu);
 
-    add_focusable_window(filters_bar_win, filter_menu);
-    add_focusable_window(tags_bar_win, tags_menu);
-    add_focusable_window(tasks_pane.win, tasks_pane.menu);
+    FocusableMenu *tags_menu = creat_focusable_menu(MENU_TYPE_TAG, "Tags", src_height - 13, SIDE_BAR_WIDTH, 13, 0);
+    load_tags_data(tags_menu);
+    register_menu(tags_menu);
 
-    focusable_menus[0].is_focused = 1;
+    int window_height = src_height - 3;
+    int window_width = (src_width - SIDE_BAR_WIDTH) / 2;
+    FocusableMenu *tasks_menu = creat_focusable_menu(MENU_TYPE_TASK, "Tasks", window_height, window_width, 3, SIDE_BAR_WIDTH);
+    load_tasks_data(tasks_menu, "1=1");
+    register_menu(tasks_menu);
+
+    int x_pos = SIDE_BAR_WIDTH + window_width;
+    app_state.details_win = newwin(window_height, window_width, 3, x_pos);
+    app_state.details_panel = new_panel(app_state.details_win);
+
+    print_in_middle(app_state.details_win, 1, 0, window_width, "Details");
+    mvwaddch(app_state.details_win, 2, 0, ACS_LTEE);
+    mvwhline(app_state.details_win, 2, 1, ACS_HLINE, window_width - 2);
+    mvwaddch(app_state.details_win, 2, window_width - 1, ACS_RTEE);
+
+    app_state.menus[0]->is_focused = 1;
     update_menu_highlighting();
+    update_task_details();
 
+    update_panels();
+    doupdate();
 
+    int c;
     while(1){
-        update_time_top_bar(top_bar, 1, src_width);
+        update_time_top_bar(app_state.top_bar_win, 1, src_width);
 
-        FocusableMenu *current_menu = &focusable_menus[current_focus_idx];
+        FocusableMenu *current_menu = get_focused_menu();
         c = wgetch(current_menu -> win);
 
         switch (c)
         {
             case 9:
-                switch_focus(task_details_win);
+                switch_focus_to_next();
                 continue;
 
             case KEY_UP:
                 if (current_menu->menu && item_count(current_menu->menu) > 0) {
                     menu_driver(current_menu -> menu, REQ_UP_ITEM);
 
-                    if (current_focus_idx == 2){
-                        show_task_details(task_details_win, (Task *)item_userptr(current_item(current_menu -> menu)));
+                    if (current_menu->type == MENU_TYPE_TASK){
+                        update_task_details();
                     }
                 }
-
                 break;
 
             case KEY_DOWN:
                 if (current_menu->menu && item_count(current_menu->menu) > 0) {
                     menu_driver(current_menu -> menu, REQ_DOWN_ITEM);
 
-                    if (current_focus_idx == 2){
-                        show_task_details(task_details_win, (Task *)item_userptr(current_item(current_menu -> menu)));
+                    if (current_menu->type == MENU_TYPE_TASK){
+                        update_task_details();
                     }
                 }
-
                 break;
 
             case 10: {
-                ITEM *current_item_ptr = current_item(current_menu->menu);
-                if (!current_item_ptr) break;
-                
-                const char *sel = item_name(current_item_ptr);
-
-                if (current_focus_idx == 0){ // Filter menu
-                    const char *where;
-                    int current_item_index = item_index(current_item_ptr);
-                    
-                    if      (strcmp(sel, "All")      == 0) where = "1=1";
-                    else if (strcmp(sel, "Today")    == 0) where = "date(due_date, 'unixepoch')=date('now')";
-                    else if (strcmp(sel, "Tomorrow") == 0) where = "date(due_date, 'unixepoch')=date('now','+1 day')";
-                    else if (strcmp(sel, "Over-Due") == 0) where = "date(due_date, 'unixepoch')<date('now')";
-                    else where = "t.status=1";
-
-                    mark_selected_filter(current_item_index);
-                    
-                    reload_tasks_menu(db, &tasks_pane, where);
-
-                    // Switch focus to tasks menu
-                    for (int i = 0; i < num_focusable_menus; i++){ 
-                        focusable_menus[i].is_focused = 0;
-                    }
-                    current_focus_idx = 2;
-                    focusable_menus[2].is_focused = 1;
-                    update_menu_highlighting();
-
-                    // Show details of first task
-                    if (tasks_pane.menu && item_count(tasks_pane.menu) > 0) {
-                        ITEM *first_task = current_item(tasks_pane.menu);
-                        if (first_task) {
-                            show_task_details(task_details_win, (Task *)item_userptr(first_task));
-                        }
-                    }
-
-                } else if (current_focus_idx == 1){ // Tags menu
-                    int current_item_index = item_index(current_item_ptr);
-                    char where[256];
-                    snprintf(where, sizeof(where),"tg.name='%s'", sel);
-                    
-                    mark_selected_tag(current_item_index);
-                    
-                    reload_tasks_menu(db, &tasks_pane, where);
-                    
-                    for (int i = 0; i < num_focusable_menus; i++){ 
-                        focusable_menus[i].is_focused = 0;
-                    }
-                    current_focus_idx = 2;
-                    focusable_menus[2].is_focused = 1;
-                    update_menu_highlighting();
-
-                    if (tasks_pane.menu && item_count(tasks_pane.menu) > 0) {
-                        ITEM *first_task = current_item(tasks_pane.menu);
-                        if (first_task) {
-                            show_task_details(task_details_win, (Task *)item_userptr(first_task));
-                        }
-                    }
+                if (current_menu->type == MENU_TYPE_TASK){
+                    handle_filter_selection();
+                } else if (current_menu->type == MENU_TYPE_TAG){
+                    handle_tag_selection();
                 }
-                
                 pos_menu_cursor(current_menu -> menu);
                 break;
             }
             case 'a':
             case 'A':
-                show_add_task_form(db);
-    
-                // Refresh all windows after form closes
-                update_menu_highlighting();
-                
-                // Update task details if on tasks menu
-                if (current_focus_idx == 2 && focusable_menus[2].menu) {
-                    ITEM *current = current_item(focusable_menus[2].menu);
-                    if (current) {
-                        show_task_details(task_details_win, (Task *)item_userptr(current));
-                    }
-                }
+                handle_add_task();
                 break;
 
             case 'q':
-                cleanup_menus();
-                destroy_win(top_bar);
-                destroy_win(filters_bar_win);   
-                destroy_win(tags_bar_win);
+                cleanup_app_state();
                 endwin();
                 exit(0);
             default:
-				mvprintw(src_height-2, 1, "Charcter pressed is = %3d\nHopefully it can be printed as '%c'", c, c);
-				refresh();
+				// mvprintw(src_height-2, 1, "Charcter pressed is = %3d\nHopefully it can be printed as '%c'", c, c);
+				// refresh();
 				break;
         }
-        clrtoeol();
-        refresh();
+        update_panels();
+        doupdate();
     }   
-    refresh();
-
-    cleanup_menus();
-    destroy_win(top_bar);
-    destroy_win(filters_bar_win);   
-    destroy_win(tags_bar_win);
+    cleanup_app_state();
     endwin();
+}
+
+FocusableMenu *creat_focusable_menu(MenuType type, char *title, int height, int width, int starty, int startx){
+
+    FocusableMenu *menu = malloc(sizeof(FocusableMenu));
+
+    menu->type = type;
+    menu->title = strdup(title);
+
+    menu->height = height;
+    menu->width = width;
+    menu->starty = starty;
+    menu->startx = startx;
+    menu->is_focused = 0;
+    menu->selected_index = 0;
+
+    menu->data = (MenuData){0};
+
+    menu->win = newwin(height, width, starty, startx);
+    box(menu->win, 0, 0);
+    menu->panel = new_panel(menu->win);
+    keypad(menu->win, true);
+
+    menu->subwin = NULL;
+    menu->menu = NULL;
+    menu->items = NULL;
+    
+    return menu;
+}
+
+void free_menu_data(FocusableMenu *menu){
+    if (menu->type == MENU_TYPE_FILTER) return; // the filter menu should not be freed if not for the cleanup, it doesn't need it's afixed menu that doens't get changed in run time
+
+    if (menu->items){
+        for (int i = 0; menu->items[i] != NULL; i++){
+            free_item(menu->items[i]);
+        }
+        free(menu->items);
+        menu->items = NULL;
+    }
+
+    switch (menu->type)
+    {
+    case MENU_TYPE_FILTER:
+        break;
+    case MENU_TYPE_TAG:
+        if (menu->data.tag_list){
+            for (int i = 0; i < menu->data.tag_count; i++){
+                free(menu->data.tag_list[i]);
+            }
+            free(menu->data.tag_list);
+            menu->data.tag_list = NULL;
+            menu->data.tag_count = 0;
+        }
+        break;
+    
+    case MENU_TYPE_TASK:
+        if (menu->data.task_list){
+            for (int i = 0; i < menu->data.task_count; i++){
+                free_task_field(&menu->data.task_list[i]);
+            }
+            free(menu->data.task_list);
+            menu->data.task_list = NULL;
+            menu->data.task_count = 0;
+        }
+        break;
+    }
+}
+
+void register_menu(FocusableMenu *menu){
+    app_state.menus = realloc(app_state.menus, (app_state.menu_count + 1) * sizeof(FocusableMenu *));
+    app_state.menus[app_state.menu_count] = menu;
+    app_state.menu_count++;
+}
+
+FocusableMenu *get_menu_by_type(MenuType type){
+    for (int i = 0; i < app_state.menu_count; i++){
+        if (app_state.menus[i]->type == type){
+            return app_state.menus[i];
+        }
+    }
+    return NULL;
+}
+
+FocusableMenu *get_focused_menu(){
+    if (app_state.current_focus_idx >= 0 && app_state.current_focus_idx < app_state.menu_count){
+        return app_state.menus[app_state.current_focus_idx];
+    }
+    return NULL;
+}
+
+void load_filters_data(FocusableMenu *menu){
+    if(menu->menu == NULL){
+        menu->data.filter_count = FILTER_COUNT;
+        menu->data.filter_list = (char **)FILTER_NAMES;
+
+        menu->items = malloc((menu->data.filter_count + 1) * sizeof(ITEM *));
+        for (int i = 0; i < menu->data.filter_count; i++){
+            menu->items[i] = new_item(menu->data.filter_list[i], NULL);
+        }
+        menu->items[menu->data.filter_count] = NULL;
+
+        menu->menu = new_menu(menu->items);
+        set_menu_win(menu->menu, menu->win);
+        menu->subwin = derwin(menu->win, 6, menu->width - 4, 4, 2);
+        set_menu_sub(menu->menu, menu->subwin);
+        set_menu_mark(menu->menu, " * ");
+
+        box(menu->win, 0, 0);
+        print_in_middle(menu->win, 1, 0, menu->width, menu->title);
+        mvwaddch(menu->win, 2, 0, ACS_LTEE);
+        mvwhline(menu->win, 2, 1, ACS_HLINE, menu->width - 2);
+        mvwaddch(menu->win, 2, menu->width - 1, ACS_RTEE);
+    }
+    post_menu(menu->menu);
+    wrefresh(menu->win);
+}
+
+void load_tags_data(FocusableMenu *menu){
+    if (menu->menu){
+        unpost_menu(menu->menu);
+        set_menu_items(menu->menu, NULL);
+    }
+
+    werase(menu->win);
+
+    free_menu_data(menu);
+
+    load_tags(app_state.db, &menu->data.tag_list, &menu->data.tag_count);
+
+    if (menu->data.tag_count > 0){
+        menu->items = malloc((menu->data.tag_count + 1) * sizeof(ITEM *));
+        for (int i = 0; i < menu->data.tag_count; i++){
+            menu->items[i] = new_item(menu->data.tag_list[i], NULL);
+        }
+        menu->items[menu->data.tag_count] = NULL;
+
+        if (!menu->menu){
+            menu->menu = new_menu(menu->items);
+            set_menu_win(menu->menu, menu->win);
+            menu->subwin = derwin(menu->win , menu->height - 4, menu->width - 4, 4, 2);
+            set_menu_sub(menu->menu, menu->subwin);
+        } else {
+            set_menu_items(menu->menu, menu->items);
+            set_menu_win(menu->menu, menu->win);
+            set_menu_sub(menu->menu, menu->subwin);
+        }
+
+        set_menu_format(menu->menu, 35, 1);
+        set_menu_mark(menu->menu, " * ");
+
+        post_menu(menu->menu);
+        
+        if (menu->selected_index < menu->data.tag_count){
+            set_current_item(menu->menu, menu->items[menu->selected_index]);
+        }
+    }
+    box(menu->win, 0, 0);
+    print_in_middle(menu->win, 1, 0, menu->width, menu->title);
+    mvwaddch(menu->win, 2, 0, ACS_LTEE);
+    mvwhline(menu->win, 2, 1, ACS_HLINE, menu->width - 2);
+    mvwaddch(menu->win, 2, menu->width - 1, ACS_RTEE);
+
+    wrefresh(menu->win);
+}
+
+void load_tasks_data(FocusableMenu *menu, const char *filter){
+    if (menu->menu){
+        unpost_menu(menu->menu);
+        set_menu_items(menu->menu, NULL);
+    }
+
+    werase(menu->win);
+
+    free_menu_data(menu);
+
+    load_tasks_fillterd(app_state.db, &menu->data, filter);
+
+    if (menu->data.task_count > 0){
+        menu->items = malloc((menu->data.task_count + 1) * sizeof(ITEM *));
+
+        for (int i = 0; i < menu->data.task_count; i++){
+            menu->items[i] = new_item(menu->data.task_list[i].title, NULL);
+            set_item_userptr(menu->items[i], &menu->data.task_list[i]);
+        }
+        menu->items[menu->data.task_count] = NULL;
+
+        if (!menu->menu){
+            menu->menu = new_menu(menu->items);
+            set_menu_win(menu->menu, menu->win);
+            menu->subwin = derwin(menu->win, menu->height - 6, menu->width - 4, 4, 2);
+            set_menu_sub(menu->menu, menu->subwin);
+        } else {
+            set_menu_items(menu->menu, menu->items);
+            set_menu_win(menu->menu, menu->win);
+            set_menu_sub(menu->menu, menu->subwin);
+        }
+
+        set_menu_format(menu->menu, 45, 1);
+        set_menu_mark(menu->menu, " * ");
+
+        post_menu(menu->menu);
+
+        if (menu->selected_index < menu->data.task_count){
+            set_current_item(menu->menu, menu->items[menu->selected_index]);
+        }
+    }
+
+    box(menu->win, 0, 0);
+    print_in_middle(menu->win, 1, 0, menu->width, menu->title);
+    mvwaddch(menu->win, 2, 0, ACS_LTEE);
+    mvwhline(menu->win, 2, 1, ACS_HLINE, menu->width - 2);
+    mvwaddch(menu->win, 2, menu->width - 1, ACS_RTEE);
+    
+    wrefresh(menu->win);
+}
+
+void update_task_details(){
+    FocusableMenu *tasks_menu = get_menu_by_type(MENU_TYPE_TASK);
+
+    if(tasks_menu && tasks_menu->menu && item_count(tasks_menu->menu) > 0){
+        ITEM *current = current_item(tasks_menu->menu);
+        if (current){
+            Task *task = (Task *)item_userptr(current);
+            show_task_details(app_state.details_win, task);
+        }
+    } else {
+        werase(app_state.details_win);
+        box(app_state.details_win, 0, 0);
+        int window_width = (src_width - SIDE_BAR_WIDTH) / 2;
+        print_in_middle(app_state.details_win, 1, 0, window_width, "Details");
+        mvwaddch(app_state.details_win, 2, 0, ACS_LTEE);
+        mvwhline(app_state.details_win, 2, 1, ACS_HLINE, window_width - 2);
+        mvwaddch(app_state.details_win, 2, window_width - 1, ACS_RTEE);
+        mvwprintw(app_state.details_win, 4, 2, "No task selected");
+        wrefresh(app_state.details_win);
+    }
+}
+
+void refresh_tasks_view(){
+    FocusableMenu *tasks_menu = get_menu_by_type(MENU_TYPE_TASK);
+    if(!tasks_menu) return;
+
+    if(tasks_menu->menu && item_count(tasks_menu->menu) > 0){
+        tasks_menu->selected_index = item_index(current_item(tasks_menu->menu));
+    }
+
+    load_tasks_data(tasks_menu, app_state.current_filter);
+    update_task_details();
+}
+
+void refresh_tags_view(){
+    FocusableMenu *tags_menu = get_menu_by_type(MENU_TYPE_TAG);
+    if(!tags_menu) return;
+    load_tags_data(tags_menu);
+}
+
+void refrech_all_views(){
+    for (int i = 0; i < app_state.menu_count; i++) {
+        FocusableMenu *menu = app_state.menus[i];
+        
+        if (menu->type == MENU_TYPE_TASK) {
+            load_tasks_data(menu, app_state.current_filter);
+        } else if (menu->type == MENU_TYPE_TAG) {
+            load_tags_data(menu);
+        }
+    }
+    
+    update_task_details();
+    update_menu_highlighting();
+    
+    update_panels();
+    doupdate();
+}
+
+void switch_focus_to_next(){
+    FocusableMenu *current = get_focused_menu();
+    if(current){
+        current->is_focused = 0;
+    }
+
+    app_state.current_focus_idx = (app_state.current_focus_idx + 1) % app_state.menu_count;
+
+    FocusableMenu *next = get_focused_menu();
+    if(next){
+        next->is_focused = 1;
+    }
+
+    update_menu_highlighting();
+
+    if (next && next->type == MENU_TYPE_TASK){
+        update_task_details();
+    }
+}
+
+void focus_menu_by_type(MenuType type){
+    for (int i = 0; i < app_state.menu_count; i++){
+        app_state.menus[i]->is_focused = 0;
+
+        if (app_state.menus[i]->type == type){
+            app_state.current_focus_idx = i;
+            app_state.menus[i]->is_focused = 1;
+        }
+    }
+    update_menu_highlighting();
+
+    if (type == MENU_TYPE_TASK) {
+        update_task_details();
+    }
+
+    update_panels();
+    doupdate();
+}
+
+void handle_filter_selection(){
+    FocusableMenu *filter_menu = get_focused_menu();
+    if (!filter_menu || filter_menu->type != MENU_TYPE_FILTER) return;
+
+    ITEM *current = current_item(filter_menu->menu);
+    if (!current) return;
+
+    const char *sel = item_name(current);
+    int idx = item_index(current);
+
+    ViewMode mode;
+    if (strcmp(sel, "All") == 0) mode = VIEW_MODE_ALL;
+    else if (strcmp(sel, "Today") == 0) mode = VIEW_MODE_TODAY;
+    else if (strcmp(sel, "Tomorrow") == 0) mode = VIEW_MODE_TOMORROW;
+    else if (strcmp(sel, "Over-Due") == 0) mode = VIEW_MODE_OVERDUE;
+    else mode = VIEW_MODE_COMPLETED;
+
+    set_filter_view(mode, idx);
+    refresh_tasks_view();
+    focus_menu_by_type(MENU_TYPE_TASK);
+
+    update_panels();
+    doupdate();
+}
+
+void handle_tag_selection(){
+    FocusableMenu *tags_menu = get_focused_menu();
+    if (!tags_menu || tags_menu->type != MENU_TYPE_TAG) return;
+
+    ITEM *current = current_item(tags_menu->menu);
+    if (!current) return;
+
+    const char *tag = item_name(current);
+    int idx = item_index(current);
+
+    set_tag_view(tag, idx);
+    refresh_tasks_view();
+    focus_menu_by_type(MENU_TYPE_TASK);
+
+    update_panels();
+    doupdate();
+}
+
+void set_filter_view(ViewMode mode, int filter_index){
+    app_state.mode = mode;
+    app_state.active_filter_index = filter_index;
+    app_state.active_tag_index = -1;
+
+    if (app_state.selected_tag_name){
+        free(app_state.selected_tag_name);
+        app_state.selected_tag_name = NULL;
+    }
+
+    if (app_state.current_filter){
+        free(app_state.current_filter);
+    }
+    // TODO: fix the incorect time where clause... why not now? man are you really asking me this question now ?? i'm working or refactoring the shitt house that i built, i can't think of anything right now and i don't want to until i complete the refatoring the code returns to a working state 
+    switch(mode){
+        case VIEW_MODE_ALL:
+            app_state.current_filter = strdup("1=1");
+            break;
+        case VIEW_MODE_TODAY:
+            app_state.current_filter = strdup("date(due_date, 'unixepoch')=date('now')");
+            break;
+        case VIEW_MODE_TOMORROW:
+            app_state.current_filter = strdup("date(due_date, 'unixepoch')=date('now','+1 day')");
+            break;
+        case VIEW_MODE_OVERDUE:
+            app_state.current_filter = strdup("date(due_date, 'unixepoch')<date('now')");
+            break;
+        case VIEW_MODE_COMPLETED:
+            app_state.current_filter = strdup("t.status=1");
+            break;
+        default:
+            app_state.current_filter = strdup("1=1");
+        }
+
+        FocusableMenu *filter_menu = get_menu_by_type(MENU_TYPE_FILTER);
+        if (filter_menu){
+            filter_menu->selected_index = filter_index;
+        }
+
+        FocusableMenu *tags_menu = get_menu_by_type(MENU_TYPE_TAG);
+        if (tags_menu){
+            tags_menu->selected_index = -1;
+        }
+}
+
+void set_tag_view(const char *tag_name, int tag_index){
+    app_state.mode = VIEW_MODE_BY_TAG;
+    app_state.active_tag_index = tag_index;
+    app_state.active_filter_index = -1;
+
+    if (app_state.current_filter) {
+        free(app_state.current_filter);
+    }
+    if (app_state.selected_tag_name) {
+        free(app_state.selected_tag_name);
+    }
+
+    app_state.selected_tag_name = strdup(tag_name);
+
+    app_state.current_filter = malloc(31);
+    snprintf(app_state.current_filter, 31, "tg.name='%s'", tag_name);
+
+    FocusableMenu *tags_menu = get_menu_by_type(MENU_TYPE_TAG);
+    if (tags_menu){
+        tags_menu->selected_index = tag_index;
+    }
+
+    FocusableMenu *filter_menu = get_menu_by_type(MENU_TYPE_FILTER);
+    if (filter_menu){
+        filter_menu->selected_index = -1;
+    }
+}
+
+void cleanup_app_state(){
+    if (app_state.current_filter) free(app_state.current_filter);
+    if (app_state.selected_tag_name) free(app_state.selected_tag_name);
+
+    for (int i = 0; i < app_state.menu_count; i++){
+        FocusableMenu *menu = app_state.menus[i];
+
+        if (menu->menu){
+            unpost_menu(menu->menu);
+            free_menu(menu->menu);
+        }
+
+        free_menu_data(menu);
+
+        if (menu->panel) del_panel(menu->panel);
+        if (menu->subwin) delwin(menu->subwin);
+        if (menu->win) delwin(menu->win);
+
+        free(menu->title);
+        free(menu);
+    }
+    free(app_state.menus);
+
+    if (app_state.details_panel) del_panel(app_state.details_panel);
+    if (app_state.details_win) delwin(app_state.details_win);
+    if (app_state.top_bar_panel) del_panel(app_state.top_bar_panel);
+    if (app_state.top_bar_win) delwin(app_state.top_bar_win);
 }
 
 WINDOW *create_newwin(int src_height, int src_width, int starty, int startx){
@@ -276,48 +655,6 @@ void print_menu(WINDOW *menu_win, int highlight, char **list, int count){
     wrefresh(menu_win);
 }
 
-void add_focusable_window(WINDOW *win, MENU *menu){
-    num_focusable_menus++;
-    focusable_menus = (FocusableMenu *)realloc(focusable_menus, num_focusable_menus * sizeof(FocusableMenu));
-    if (focusable_menus == NULL){
-        endwin();
-        exit(EXIT_FAILURE);
-    }
-    focusable_menus[num_focusable_menus - 1].win = win;
-    focusable_menus[num_focusable_menus - 1].menu = menu;
-    focusable_menus[num_focusable_menus - 1].is_focused = 0;
-}
-
-void switch_focus(WINDOW *task_details_win){
-    if (num_focusable_menus <= 1) return;
-
-    focusable_menus[current_focus_idx].is_focused = 0;
-    current_focus_idx = (current_focus_idx + 1) % num_focusable_menus;
-    focusable_menus[current_focus_idx].is_focused = 1;
-
-    update_menu_highlighting();
-
-    if (current_focus_idx == 2 && focusable_menus[2].menu){
-        ITEM *current = current_item(focusable_menus[2].menu);
-        if (current){
-            show_task_details(task_details_win, (Task *)item_userptr(current));
-        }
-    }
-}
-
-void cleanup_menus(){
-    if(focusable_menus != NULL){
-        for (int i = 0; i < num_focusable_menus; i++){
-            unpost_menu(focusable_menus[i].menu);
-            free_menu(focusable_menus[i].menu);
-        }
-        free(focusable_menus);
-        focusable_menus = NULL;
-    }
-    num_focusable_menus = 0;
-    current_focus_idx = 0;
-}
-
 void print_in_middle(WINDOW *win, int starty, int startx, int src_width, char *string){
 
     int length, x, y;
@@ -338,54 +675,6 @@ void print_in_middle(WINDOW *win, int starty, int startx, int src_width, char *s
 	x = startx + (int)temp;
 	mvwprintw(win, y, x, "%s", string);
 	refresh();
-}
-
-void reload_tasks_menu(sqlite3 *db, TasksPane *tasks_pane, const char *where_clause){
-
-    int window_width = (src_width - SIDE_BAR_WIDTH) / 2;
-
-    unpost_menu(tasks_pane->menu);
-
-    ITEM **old_items = (ITEM **)menu_items(tasks_pane->menu);
-    int old_count = tasks_pane->tasks_struct.task_count;
-
-    int loading_response = load_tasks_fillterd(db, &tasks_pane->tasks_struct, where_clause);
-    int tasks_count = tasks_pane->tasks_struct.task_count;
-
-    werase(tasks_pane->win);
-
-    box(tasks_pane->win, 0, 0);
-
-    print_in_middle(tasks_pane->win, 1, 0, window_width, "TASKS");
-    mvwaddch(tasks_pane->win, 2, 0, ACS_LTEE);
-    mvwhline(tasks_pane->win, 2, 1, ACS_HLINE, window_width - 2);
-    mvwaddch(tasks_pane->win, 2, window_width - 1, ACS_RTEE);
-
-    tasks_pane->items = calloc(tasks_count+1, sizeof(*tasks_pane->items));
-    // ToDo : check for mem allocation errors and set a fall back  
-
-
-    for (int i = 0; i < tasks_count; i++){
-        tasks_pane->items[i] = new_item(tasks_pane->tasks_struct.task_list[i].title, NULL);
-        set_item_userptr(tasks_pane->items[i], &tasks_pane->tasks_struct.task_list[i]);
-    }
-    tasks_pane->items[tasks_count] = NULL;
-    
-    set_menu_items(tasks_pane->menu, tasks_pane->items);
-
-    if (old_items){
-        for(int i = 0; i < old_count; i++){
-            if (old_items[i]){
-                free_item(old_items[i]);
-            }
-        }
-        free(old_items);
-    }
-
-
-    post_menu(tasks_pane->menu);
-    wrefresh(tasks_pane->win);
-
 }
 
 void show_task_details(WINDOW *win, Task *t) {
@@ -438,94 +727,6 @@ WINDOW* create_top_bar() {
     return top_bar;
 }
 
-void create_filter_menu(ITEM ***filter_items, MENU **filter_menu, WINDOW **filters_bar_win) {
-    *filter_items = (ITEM **)calloc(tasks_filters_count + 1, sizeof(ITEM *));
-    for (int i = 0; i < tasks_filters_count; i++) {
-        (*filter_items)[i] = new_item(tasks_filters_list[i], NULL);
-    }
-    (*filter_items)[tasks_filters_count] = NULL;
-
-    *filter_menu = new_menu((ITEM **)*filter_items);
-    *filters_bar_win = create_newwin(10, SIDE_BAR_WIDTH, 3, 0);
-    keypad(*filters_bar_win, TRUE);
-    
-    set_menu_win(*filter_menu, *filters_bar_win);
-    set_menu_sub(*filter_menu, derwin(*filters_bar_win, 6, SIDE_BAR_WIDTH - 2, 4, 2));
-    set_menu_mark(*filter_menu, " * ");
-    box(*filters_bar_win, 0, 0);
-
-    print_in_middle(*filters_bar_win, 1, 0, SIDE_BAR_WIDTH, "Filters");
-    mvwaddch(*filters_bar_win, 2, 0, ACS_LTEE);
-    mvwhline(*filters_bar_win, 2, 1, ACS_HLINE, SIDE_BAR_WIDTH - 2);
-    mvwaddch(*filters_bar_win, 2, SIDE_BAR_WIDTH - 1, ACS_RTEE);
-
-    post_menu(*filter_menu);
-    wrefresh(*filters_bar_win);
-}
-
-void create_tags_menu(sqlite3 *db, ITEM ***tags_items, MENU **tags_menu, WINDOW **tags_bar_win, char ***tags_list, int *tags_count) {
-    load_tags(db, tags_list, tags_count);
-
-    *tags_items = (ITEM **)calloc(*tags_count + 1, sizeof(ITEM *));
-    for (int i = 0; i < *tags_count; i++) {
-        (*tags_items)[i] = new_item((*tags_list)[i], NULL);
-    }
-    (*tags_items)[*tags_count] = NULL;
-
-    *tags_menu = new_menu((ITEM **)*tags_items);
-    *tags_bar_win = create_newwin(src_height - 16, SIDE_BAR_WIDTH, 13, 0);
-    keypad(*tags_bar_win, TRUE);
-    
-    set_menu_win(*tags_menu, *tags_bar_win);
-    set_menu_sub(*tags_menu, derwin(*tags_bar_win, src_height - 16 - 4, SIDE_BAR_WIDTH - 4, 4, 2));
-    set_menu_format(*tags_menu, 35,1);
-    set_menu_mark(*tags_menu, " * ");
-    box(*tags_bar_win, 0, 0);
-
-    print_in_middle(*tags_bar_win, 1, 0, SIDE_BAR_WIDTH - 1, "Tags");
-    mvwaddch(*tags_bar_win, 2, 0, ACS_LTEE);
-    mvwhline(*tags_bar_win, 2, 1, ACS_HLINE, SIDE_BAR_WIDTH - 2);
-    mvwaddch(*tags_bar_win, 2, SIDE_BAR_WIDTH - 1, ACS_RTEE);
-
-    post_menu(*tags_menu);
-    wrefresh(*tags_bar_win);
-}
-
-void create_tasks_menu(sqlite3 *db, TasksPane *tasks_pane) {
-
-    load_tasks(db, &tasks_pane->tasks_struct);
-
-    tasks_pane->items = (ITEM **)calloc(tasks_pane->tasks_struct.task_count + 1, sizeof(ITEM *));
-    for (int i = 0; i < tasks_pane->tasks_struct.task_count; i++) {
-        tasks_pane->items[i] = new_item(tasks_pane->tasks_struct.task_list[i].title, NULL);
-        set_item_userptr(tasks_pane->items[i], &tasks_pane->tasks_struct.task_list[i]);
-    }
-    tasks_pane->items[tasks_pane->tasks_struct.task_count] = NULL;
-
-    int window_height = src_height - 6;
-    int window_width = (src_width - SIDE_BAR_WIDTH) / 2;
-    int submenu_height = window_height - 6;
-    int submenu_width = window_width - 4;
-
-    tasks_pane->win = create_newwin(window_height, window_width, 3, SIDE_BAR_WIDTH);
-    tasks_pane->menu = new_menu((ITEM **)tasks_pane->items);
-    keypad(tasks_pane->win, TRUE);
-    
-    set_menu_win(tasks_pane->menu, tasks_pane->win);
-    set_menu_sub(tasks_pane->menu, derwin(tasks_pane->win, submenu_height, submenu_width, 4, 2));
-    set_menu_format(tasks_pane->menu, 45, 1);
-    set_menu_mark(tasks_pane->menu, " * ");
-    box(tasks_pane->win, 0, 0);
-
-    print_in_middle(tasks_pane->win, 1, 0, window_width, "TASKS");
-    mvwaddch(tasks_pane->win, 2, 0, ACS_LTEE);
-    mvwhline(tasks_pane->win, 2, 1, ACS_HLINE, window_width - 2);
-    mvwaddch(tasks_pane->win, 2, window_width - 1, ACS_RTEE);
-
-    post_menu(tasks_pane->menu);
-    wrefresh(tasks_pane->win);
-}
-
 WINDOW* create_task_details_window() {
     int window_height = src_height - 6;
     int window_width = (src_width - SIDE_BAR_WIDTH) / 2;
@@ -544,64 +745,61 @@ WINDOW* create_task_details_window() {
 }
 
 void update_menu_highlighting(void){
-    for (int i = 0; i < num_focusable_menus; i++){
-        FocusableMenu *menu_item = &focusable_menus[i];
+    for (int i = 0; i < app_state.menu_count; i++){
+        FocusableMenu *menu = app_state.menus[i];
         
-        if(menu_item->is_focused){
+        if(menu->is_focused){
             // Focused menu
-            set_menu_fore(menu_item->menu, A_REVERSE | A_BOLD);
-            set_menu_back(menu_item->menu, A_NORMAL);
-            set_menu_mark(menu_item->menu, " * ");
+            set_menu_fore(menu->menu, A_REVERSE | A_BOLD);
+            set_menu_back(menu->menu, A_NORMAL);
+            set_menu_mark(menu->menu, " * ");
             
-            wattron(menu_item->win, A_BOLD);
-            box(menu_item->win, 0, 0);
-            wattroff(menu_item->win, A_BOLD);
+            wattron(menu->win, A_BOLD);
+            box(menu->win, 0, 0);
+            wattroff(menu->win, A_BOLD);
         } else {
             // Non-focused menu
-            set_menu_fore(menu_item->menu, A_DIM);
-            set_menu_back(menu_item->menu, A_DIM);
+            set_menu_fore(menu->menu, A_DIM);
+            set_menu_back(menu->menu, A_DIM);
             
             // Show selection indicator for filters/tags even when not focused
-            if(i == 0 && selected_filter_index >= 0) {
+            if(menu->type == MENU_TYPE_FILTER && app_state.active_filter_index >= 0) {
                 // Filter menu show which filter is active
-                set_menu_mark(menu_item->menu, " > ");
-                // Position cursor on selected filter
-                ITEM **items = menu_items(menu_item->menu);
-                int item_count_val = item_count(menu_item->menu);
-                if (selected_filter_index < item_count_val) {
-                    set_current_item(menu_item->menu, items[selected_filter_index]);
+                set_menu_mark(menu->menu, " > ");
+                if (app_state.active_filter_index < item_count(menu->menu)) {
+                    set_current_item(menu->menu, menu->items[app_state.active_filter_index]);
                 }
-            } else if(i == 1 && selected_tag_index >= 0) {
+            } else if(menu->type == MENU_TYPE_TAG && app_state.active_tag_index >= 0) {
                 // Tag menu
-                set_menu_mark(menu_item->menu, " > ");
-                
-                ITEM **items = menu_items(menu_item->menu);
-                int item_count_val = item_count(menu_item->menu);
-                if (selected_tag_index < item_count_val) {
-                    set_current_item(menu_item->menu, items[selected_tag_index]);
+                set_menu_mark(menu->menu, " > ");
+                if (app_state.active_tag_index < item_count(menu->menu)) {
+                    set_current_item(menu->menu, menu->items[app_state.active_tag_index]);
                 }
             } else {
-                set_menu_mark(menu_item->menu, "   ");
+                set_menu_mark(menu->menu, "   ");
             }
-            
-            box(menu_item->win, 0, 0);
+            box(menu->win, 0, 0);
         }
-        wrefresh(menu_item->win);
+        wrefresh(menu->win);
     }
     refresh();
 }
 
-void mark_selected_filter(int selected_index) {
-    selected_filter_index = selected_index;
-    selected_tag_index = -1;
-}
-
-void mark_selected_tag(int selected_index) {
-    selected_tag_index = selected_index;
-    selected_filter_index = -1;
-}
-
 // form:
+
+void handle_add_task(){
+    // FocusableMenu *tags_menu = get_focused_menu(MENU_TYPE_TAG);
+    // int old_tag_count = tags_menu ? tags_menu->data.tag_count : 0;
+
+    show_add_task_form(app_state.db);
+
+    FocusableMenu *current = get_focused_menu();
+    if (current->type != MENU_TYPE_TASK){
+        focus_menu_by_type(MENU_TYPE_TASK);
+    }
+
+    refrech_all_views();
+}
 
 WINDOW *create_form_window(void){
     int form_height = 24;
@@ -712,7 +910,7 @@ void show_add_task_form(sqlite3 *db) {
                 break;
             case 9:  // TAB key
                 if (current_field == 3) {  // On tag field
-                    show_tag_menu(form_win, selected_tag, tags_list, tags_count);
+                    show_tag_menu(form_win, selected_tag);
                     if (strcmp(selected_tag, "-- Add new tag --") == 0){
                         show_add_tag_win(form_win, selected_tag, db);
                     }
@@ -845,7 +1043,12 @@ void show_add_task_form(sqlite3 *db) {
     destroy_form_window(form_win);
 }
 
-void show_tag_menu(WINDOW *parent_win,char *selected_tag, char **tags, int tag_count) {
+void show_tag_menu(WINDOW *parent_win,char *selected_tag) {
+    FocusableMenu *tags_menu = get_menu_by_type(MENU_TYPE_TAG);
+    if (!tags_menu) return;
+
+    char **tags = tags_menu->data.tag_list;
+    int tag_count = tags_menu->data.tag_count;
     
     int menu_height = 25 + 5;
     int menu_width = 30;

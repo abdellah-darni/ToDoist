@@ -139,83 +139,9 @@ void free_tags_list(char **tags_list, int tags_count){
     free(tags_list);
 }
 
+int load_tasks_fillterd(sqlite3 *db, MenuData *data, const char *where_clause){
 
-int load_tasks(sqlite3 *db, Tasks *tasks){
-    sqlite3_stmt *stmt;
-    int db_tasks_count = 0;
-    int rc;
-
-    const char *sql_count = "SELECT COUNT(*) FROM tasks;";
-
-    rc = sqlite3_prepare_v2(db, sql_count, -1, &stmt, NULL);
-    if (rc != SQLITE_OK) {
-        fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
-        return -1;
-    }
-
-    if ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
-        db_tasks_count = (int)sqlite3_column_int(stmt, 0);
-    }
-    
-    sqlite3_finalize(stmt);
-    stmt = NULL;
-
-    Task *tmp_list = realloc(tasks->task_list, db_tasks_count * sizeof(Task));
-    if (!tmp_list){
-        fprintf(stderr, "Failed to allocate memory for a tasks\n");
-        return -1;
-    }
-
-    tasks->task_list = tmp_list;
-
-    const char *sql_tasks = "SELECT t.id, t.title, t.description, t.status, "
-                        "       t.due_date, t.created_at, t.updated_at, tg.name "
-                        "  FROM tasks AS t "
-                        "  LEFT JOIN task_tags AS tt ON tt.task_id = t.id "
-                        "  LEFT JOIN tags       AS tg ON tg.id      = tt.tag_id"
-                        "  GROUP BY t.id;";
-    
-    rc = sqlite3_prepare_v2(db, sql_tasks, -1, &stmt, NULL);
-    if (rc != SQLITE_OK) {
-        fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
-        return -1;
-    }
-
-    int i = 0;
-
-    while((rc = sqlite3_step(stmt)) == SQLITE_ROW){
-        Task tmp;
-        tmp.id          = sqlite3_column_int(stmt, 0);
-        tmp.title       = strdup((char *)sqlite3_column_text(stmt, 1));
-        const unsigned char *desc_text = sqlite3_column_text(stmt, 2);
-        tmp.desc        = desc_text ? strdup((const char *) desc_text) : NULL;
-        tmp.status      = sqlite3_column_int(stmt, 3);
-        tmp.due_date    = sqlite3_column_int(stmt, 4);
-        tmp.created_at  = sqlite3_column_int(stmt, 5);
-        tmp.updated_at  = sqlite3_column_int(stmt, 6);
-
-        const unsigned char *tagtxt = sqlite3_column_text(stmt, 7);
-        tmp.tag = tagtxt ? strdup((const char*)tagtxt) : NULL;
-
-        tasks->task_list[i++] = tmp;
-    }
-
-    if (rc != SQLITE_DONE) {
-        fprintf(stderr, "Error iterating tasks: %s\n", sqlite3_errmsg(db));
-        sqlite3_finalize(stmt);
-        return -1;
-    }
-
-    sqlite3_finalize(stmt);
-
-    tasks->task_count = db_tasks_count;
-
-    return 0;
-}
-
-int load_tasks_fillterd(sqlite3 *db, Tasks *tasks, const char *where_clause){
-
-    if (!db || !tasks || !where_clause) return -1;
+    if (!db || !data || !where_clause) return -1;
 
     sqlite3_stmt *stmt;
     int db_tasks_count = -1;
@@ -232,7 +158,7 @@ int load_tasks_fillterd(sqlite3 *db, Tasks *tasks, const char *where_clause){
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
         fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
-        free_tasks_list(tasks);
+        free_tasks_list(data);
         return -1;
     }
 
@@ -250,14 +176,14 @@ int load_tasks_fillterd(sqlite3 *db, Tasks *tasks, const char *where_clause){
 
         Task *error_task = task_placeholder(msg, msg);
 
-        free_tasks_list(tasks);
-        tasks->task_list = error_task;
-        tasks->task_count = 1;
+        free_tasks_list(data);
+        data->task_list = error_task;
+        data->task_count = 1;
 
         return 0;
 
     } else if (db_tasks_count == -1){
-        free_tasks_list(tasks);
+        free_tasks_list(data);
         return -1;
     }
 
@@ -265,7 +191,7 @@ int load_tasks_fillterd(sqlite3 *db, Tasks *tasks, const char *where_clause){
 
     if (!new_list){
         fprintf(stderr, "Failed to allocate memory for a tasks\n");
-        free_tasks_list(tasks);
+        free_tasks_list(data);
         return -1;
     }
 
@@ -289,7 +215,7 @@ int load_tasks_fillterd(sqlite3 *db, Tasks *tasks, const char *where_clause){
     if (rc != SQLITE_OK) {
         fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
         free(new_list);
-        free_tasks_list(tasks);
+        free_tasks_list(data);
         return -1;
     }
 
@@ -319,7 +245,7 @@ int load_tasks_fillterd(sqlite3 *db, Tasks *tasks, const char *where_clause){
             free_task_field(&new_list[j]);
         }
         free(new_list);
-        free_tasks_list(tasks);
+        free_tasks_list(data);
         sqlite3_finalize(stmt);
         return -1;
     }
@@ -327,9 +253,9 @@ int load_tasks_fillterd(sqlite3 *db, Tasks *tasks, const char *where_clause){
     sqlite3_finalize(stmt);
     stmt = NULL;
 
-    free_tasks_list(tasks);
-    tasks->task_list = new_list;
-    tasks->task_count = db_tasks_count;
+    free_tasks_list(data);
+    data->task_list = new_list;
+    data->task_count = db_tasks_count;
 
     return 0;
    
@@ -346,19 +272,18 @@ void free_task_field(Task *task){
     task->tag = NULL;
 }
 
-void free_tasks_list(Tasks *tasks){
-    if (!tasks) return;
+void free_tasks_list(MenuData *data){
+    if (!data) return;
 
-    if (tasks->task_list){
-        for (int i = 0; i < tasks->task_count; i++){
-            free_task_field(&tasks->task_list[i]);
+    if (data->task_list){
+        for (int i = 0; i < data->task_count; i++){
+            free_task_field(&data->task_list[i]);
         }
-        free(tasks->task_list);
-        tasks->task_list = NULL;
+        free(data->task_list);
+        data->task_list = NULL;
     }
-    tasks->task_count = 0;
+    data->task_count = 0;
 }
-
 
 void create_no_tasks_message(char *buffer, size_t buffer_size, const char *where_clause) {
 
@@ -396,7 +321,6 @@ void create_no_tasks_message(char *buffer, size_t buffer_size, const char *where
         snprintf(buffer, buffer_size, "No tasks match current filter");
     }
 }
-
 
 Task * task_placeholder(const char *title, const char *desc){
 
@@ -573,4 +497,21 @@ int insert_new_task(sqlite3 *db, TaskFormData new_task){
 
     return 0;
 
+}
+
+int db_tags_count(sqlite3 *db){
+    sqlite3_stmt *stmt;
+    const char *sql = "SELECT COUNT(id) FROM tags;";
+
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
+        return -1;
+    }
+    sqlite3_int64 count = -1;
+    if ((rc = sqlite3_step(stmt)) == SQLITE_ROW){
+        count = sqlite3_column_int(stmt, 0);
+    }
+    sqlite3_finalize(stmt);
+    return (int)count;
 }
