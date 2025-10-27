@@ -120,7 +120,7 @@ void init_tui(sqlite3 *db){
                 break;
 
             case 10: {
-                if (current_menu->type == MENU_TYPE_TASK){
+                if (current_menu->type == MENU_TYPE_FILTER){
                     handle_filter_selection();
                 } else if (current_menu->type == MENU_TYPE_TAG){
                     handle_tag_selection();
@@ -138,8 +138,6 @@ void init_tui(sqlite3 *db){
                 endwin();
                 exit(0);
             default:
-				// mvprintw(src_height-2, 1, "Charcter pressed is = %3d\nHopefully it can be printed as '%c'", c, c);
-				// refresh();
 				break;
         }
         update_panels();
@@ -617,13 +615,6 @@ WINDOW *create_newwin(int src_height, int src_width, int starty, int startx){
     return local_win;
 }
 
-void destroy_win(WINDOW *win){
-    wborder(win, ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ');
-    clrtoeol();
-    wrefresh(win);
-    delwin(win);
-}
-
 void update_time_top_bar(WINDOW *win, int y_pos, int src_width){
     time_t now = time(NULL);
     char time_str[64];
@@ -635,24 +626,6 @@ void update_time_top_bar(WINDOW *win, int y_pos, int src_width){
     wattroff(win,A_ITALIC | A_BOLD);
     box(win, 0,0);
     wrefresh(win);
-}
-
-void print_menu(WINDOW *menu_win, int highlight, char **list, int count){
-    int x, y, i;
-    x = 2;
-    y = 2;
-
-    for (i = 0; i < count; i++){
-        if(highlight == i){
-            wattron(menu_win, A_REVERSE);
-            mvwprintw(menu_win, y, x, "%s", list[i]);
-            wattroff(menu_win, A_REVERSE);
-        }else{
-            mvwprintw(menu_win, y, x, "%s", list[i]);
-        }
-        y++;
-    }
-    wrefresh(menu_win);
 }
 
 void print_in_middle(WINDOW *win, int starty, int startx, int src_width, char *string){
@@ -722,28 +695,6 @@ void show_task_details(WINDOW *win, Task *t) {
     wrefresh(win);
 }
 
-WINDOW* create_top_bar() {
-    WINDOW *top_bar = create_newwin(3, src_width, 0, 0);
-    return top_bar;
-}
-
-WINDOW* create_task_details_window() {
-    int window_height = src_height - 6;
-    int window_width = (src_width - SIDE_BAR_WIDTH) / 2;
-    int x_pos = SIDE_BAR_WIDTH + window_width;
-    
-    WINDOW *task_details_win = create_newwin(window_height, window_width, 3, x_pos);
-    box(task_details_win, 0, 0);
-    
-    print_in_middle(task_details_win, 1, 0, window_width, "Details");
-    mvwaddch(task_details_win, 2, 0, ACS_LTEE);
-    mvwhline(task_details_win, 2, 1, ACS_HLINE, window_width - 2);
-    mvwaddch(task_details_win, 2, window_width - 1, ACS_RTEE);
-    
-    wrefresh(task_details_win);
-    return task_details_win;
-}
-
 void update_menu_highlighting(void){
     for (int i = 0; i < app_state.menu_count; i++){
         FocusableMenu *menu = app_state.menus[i];
@@ -788,9 +739,6 @@ void update_menu_highlighting(void){
 // form:
 
 void handle_add_task(){
-    // FocusableMenu *tags_menu = get_focused_menu(MENU_TYPE_TAG);
-    // int old_tag_count = tags_menu ? tags_menu->data.tag_count : 0;
-
     show_add_task_form(app_state.db);
 
     FocusableMenu *current = get_focused_menu();

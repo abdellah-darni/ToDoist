@@ -100,19 +100,9 @@ void cleanup_app_state();
 
 
 WINDOW *create_newwin(int height, int width, int starty, int startx);
-void destroy_win(WINDOW *win);
 void update_time_top_bar(WINDOW *win, int y_pos, int x_pos);
-void print_menu(WINDOW *menu_win, int highlight, char **list, int count);
-
-void add_focusable_window(WINDOW *win, MENU *menu);
-
 void print_in_middle(WINDOW *win, int starty, int startx, int width, char *string);
-
 void show_task_details(WINDOW *win ,Task *t);
-
-WINDOW* create_top_bar();
-WINDOW* create_task_details_window();
-
 void update_menu_highlighting();
 
 // form:
@@ -120,7 +110,6 @@ void handle_add_task();
 WINDOW *create_form_window(void);
 void destroy_form_window(WINDOW *form_win);
 void show_add_task_form(sqlite3 *db);
-
 void show_tag_menu(WINDOW *parent_win, char *selected_tag);
 void show_add_tag_win(WINDOW *parent_win, char *selected_tag, sqlite3 *db);
 
