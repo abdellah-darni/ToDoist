@@ -1,5 +1,28 @@
 BEGIN TRANSACTION;
 
+CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  description TEXT,
+  status INTEGER DEFAULT 0,
+  due_date INTEGER,
+  created_at INTEGER DEFAULT (strftime('%s','now')),
+  updated_at INTEGER DEFAULT (strftime('%s','now'))
+);
+
+CREATE TABLE IF NOT EXISTS tags (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS task_tags (
+  task_id INTEGER NOT NULL,
+  tag_id  INTEGER NOT NULL,
+  PRIMARY KEY (task_id, tag_id),
+  FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+  FOREIGN KEY (tag_id)  REFERENCES tags(id)  ON DELETE CASCADE
+);
+
 INSERT INTO tasks (title, description, status, due_date)
 VALUES
   ('Buy groceries', 'Milk, eggs, bread, bananas, chicken', 0, strftime('%s','2025-07-19')),
