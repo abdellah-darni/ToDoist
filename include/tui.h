@@ -25,17 +25,6 @@ typedef enum _ViewMode{
     VIEW_MODE_BY_TAG
 } ViewMode;
 
-// typedef struct _MenuData{
-//     Task *task_list;
-//     int task_count;
-
-//     char **tag_list;
-//     int tag_count;
-
-//     char **filter_list;
-//     int filter_count;
-// } MenuData;
-
 typedef struct _FocusableMenu {
     PANEL *panel;
     WINDOW *win;
