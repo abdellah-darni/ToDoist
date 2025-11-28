@@ -574,7 +574,7 @@ int add_task(sqlite3 *db, char *title, char *descreption, int due_date){
 int update_task(sqlite3 *db, Task *task){
 
     if (!db){
-        return;
+        return -1;
     }
 
     const char *sql = "UPDATE tasks SET title = ?, description = ?, status = ?, due_date = ?, created_at = ? WHERE id = ?;";
