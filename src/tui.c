@@ -1192,28 +1192,33 @@ void show_add_tag_win(WINDOW *parent_win, char *selected_tag, sqlite3 *db){
 void handle_task_status(){
 
     FocusableMenu *tasks_menu = get_focused_menu();
-    ITEM *current_selected_item;
-    Task *task;
-    if (tasks_menu->type != MENU_TYPE_TASK){
+
+    if (!tasks_menu && tasks_menu->type != MENU_TYPE_TASK){
         fprintf(stderr, "DEBUG: this is not the task win!\n");
         return;
     }
 
-    if(tasks_menu && tasks_menu->menu && item_count(tasks_menu->menu) > 0){
-        current_selected_item = current_item(tasks_menu->menu);
-
-        if (current_selected_item){
-            task = (Task *)item_userptr(current_selected_item);
-            fprintf(stderr,"the current task stuff id: %d\ttitle: %s\tdiscreption: %s\tstatus: %d\n",task->id, task->title, task->desc, task->status);
-        }else{
-                fprintf(stderr, "DEBUG: Selected item has NULL userptr!\n");
-        }
+    if(!tasks_menu->menu && item_count(tasks_menu->menu) < 0){
+        return;
     }
 
-    // const char *action = 
+    ITEM *current_selected_item = current_item(tasks_menu->menu);
 
-    int height = 25;
-    int width = 30;
+    if (!current_selected_item){
+            return;
+    }
+
+    Task *task = (Task *)item_userptr(current_selected_item);
+
+    if(!task){
+        return;
+    }
+
+
+    const char *action = task->status ? "Pending" : "Done";
+
+    int height = 10;
+    int width = 50;
     int start_y = (src_height - height) / 2;
     int start_x = (src_width - width) / 2;
 
@@ -1221,13 +1226,51 @@ void handle_task_status(){
     WINDOW *confirmation_win = newwin(height, width, start_y, start_x);
 
     box(confirmation_win, 0, 0);
-    mvwprintw(confirmation_win, 1, 2, "Set the status to: ");
-    mvwaddch(confirmation_win, 2, 0, ACS_LTEE);
-    mvwhline(confirmation_win, 2, 1, ACS_HLINE, width - 2);
-    mvwaddch(confirmation_win, 2, width - 1, ACS_RTEE);
+
+    const char *title = " Confirm Status Change ";
+
+    mvwprintw(confirmation_win, 0, (width - strlen(title)) / 2, "%s", title);
+
+    mvwprintw(confirmation_win, 2, 2, "Task: ");
+    wprintw(confirmation_win, "%.35s...", task->title); 
+    mvwprintw(confirmation_win, 4, 2, "Mark this task as: ");
+    wattron(confirmation_win, A_BOLD);
+    wprintw(confirmation_win, "%s", action);
+    wattroff(confirmation_win, A_BOLD);
+
+    const char *help = "[ENTER] Confirm   [ESC] Cancel";
+    mvwprintw(confirmation_win, height - 2, (width - strlen(help)) / 2, "%s", help);
 
     PANEL *conf_panel = new_panel(confirmation_win);
-
+    top_panel(conf_panel);
     update_panels();
     doupdate();
+
+    int ch;
+    
+    keypad(confirmation_win, TRUE);
+
+    while (1){
+
+        ch = wgetch(confirmation_win);
+
+        switch (ch)
+        {
+        case 10:
+            task->status = !task->status;
+            // TODO: call to the function the update the status in the db side
+            refresh_tasks_view();
+            goto exit;
+        case 27:
+            goto exit;
+        }
+    }
+
+exit:
+    hide_panel(conf_panel);
+    del_panel(conf_panel);
+    delwin(confirmation_win);
+    update_panels();
+    doupdate();
+    return;
 }
