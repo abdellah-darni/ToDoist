@@ -570,3 +570,41 @@ int add_task(sqlite3 *db, char *title, char *descreption, int due_date){
     }
     return sqlite3_last_insert_rowid(db);
 }
+
+int update_task(sqlite3 *db, Task *task){
+
+    if (!db){
+        return;
+    }
+
+    const char *sql = "UPDATE tasks SET title = ?, description = ?, status = ?, due_date = ?, created_at = ? WHERE id = ?;";
+
+    sqlite3_stmt *stmt = NULL;
+
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK){
+        fprintf(stderr, "Failed to prepare statment [update_task]: %s\n", sqlite3_errmsg(db));
+        return -1;
+    }
+
+    sqlite3_bind_text(stmt, 1, task->title, -1, SQLITE_STATIC);
+
+    if (task->desc != NULL && strlen(task->desc) > 0) {
+        sqlite3_bind_text(stmt, 2, task->desc, -1, SQLITE_STATIC);
+    } else {
+        sqlite3_bind_null(stmt, 2);
+    }
+    sqlite3_bind_int(stmt, 3, task->status);
+
+    if (task->due_date > 0) {
+        sqlite3_bind_int64(stmt, 4, (sqlite3_int64)task->due_date);
+    } else {
+        sqlite3_bind_null(stmt, 4);
+    }
+
+    sqlite3_bind_int(stmt, 5, task->id);
+
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE);
+}
