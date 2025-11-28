@@ -224,8 +224,7 @@ int load_tasks_fillterd(sqlite3 *db, MenuData *data, const char *where_clause){
     while((rc = sqlite3_step(stmt)) == SQLITE_ROW){
         Task tmp;
         tmp.id          = sqlite3_column_int(stmt, 0);
-        const unsigned char *t = sqlite3_column_text(stmt, 1);
-        tmp.title       = t ? strdup((const char *)t) : NULL;
+        
         const unsigned char *d = sqlite3_column_text(stmt, 2);
         tmp.desc        = d ? strdup((const char *)d) : NULL;
         tmp.status      = sqlite3_column_int(stmt, 3);
@@ -235,6 +234,29 @@ int load_tasks_fillterd(sqlite3 *db, MenuData *data, const char *where_clause){
 
         const unsigned char *tagtxt = sqlite3_column_text(stmt, 7);
         tmp.tag = tagtxt ? strdup((const char*)tagtxt) : NULL;
+
+        // hundelling the title
+        const unsigned char *t = sqlite3_column_text(stmt, 1);
+
+        char *mark = tmp.status ? "[X] " :"[ ] ";
+        size_t mark_len = strlen(mark);
+
+        if (t){
+            const char *title_str = (const char *)t;
+            size_t title_len = strlen(title_str);
+
+            char * the_title = (char *)malloc(mark_len + title_len + 1);
+            if (the_title){
+                strcpy(the_title, mark);
+                strcat(the_title, title_str);
+
+                tmp.title = the_title;
+            }else{
+                tmp.title = NULL;
+            }
+        }else{
+            tmp.title = NULL;
+        }
 
         new_list[i++] = tmp;
     }
