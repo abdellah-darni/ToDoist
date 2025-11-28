@@ -95,11 +95,12 @@ void init_tui(sqlite3 *db){
 
         switch (c)
         {
-            case 9:
+            case 9:{
                 switch_focus_to_next();
                 continue;
+            }
 
-            case KEY_UP:
+            case KEY_UP:{
                 if (current_menu->menu && item_count(current_menu->menu) > 0) {
                     menu_driver(current_menu -> menu, REQ_UP_ITEM);
 
@@ -108,8 +109,8 @@ void init_tui(sqlite3 *db){
                     }
                 }
                 break;
-
-            case KEY_DOWN:
+            }
+            case KEY_DOWN:{
                 if (current_menu->menu && item_count(current_menu->menu) > 0) {
                     menu_driver(current_menu -> menu, REQ_DOWN_ITEM);
 
@@ -118,7 +119,7 @@ void init_tui(sqlite3 *db){
                     }
                 }
                 break;
-
+            }
             case 10: {
                 if (current_menu->type == MENU_TYPE_FILTER){
                     handle_filter_selection();
@@ -129,14 +130,20 @@ void init_tui(sqlite3 *db){
                 break;
             }
             case 'a':
-            case 'A':
+            case 'A':{
                 handle_add_task();
                 break;
-
-            case 'q':
+            }
+            case 'c':
+            case 'C':{
+                handle_task_status();
+                break;
+            }
+            case 'q':{
                 cleanup_app_state();
                 endwin();
                 exit(0);
+            }
             default:
 				break;
         }
@@ -1178,4 +1185,49 @@ void show_add_tag_win(WINDOW *parent_win, char *selected_tag, sqlite3 *db){
     delwin(add_tag_win);
 
     return;
+}
+
+// actions 
+
+void handle_task_status(){
+
+    FocusableMenu *tasks_menu = get_focused_menu();
+    ITEM *current_selected_item;
+    Task *task;
+    if (tasks_menu->type != MENU_TYPE_TASK){
+        fprintf(stderr, "DEBUG: this is not the task win!\n");
+        return;
+    }
+
+    if(tasks_menu && tasks_menu->menu && item_count(tasks_menu->menu) > 0){
+        current_selected_item = current_item(tasks_menu->menu);
+
+        if (current_selected_item){
+            task = (Task *)item_userptr(current_selected_item);
+            fprintf(stderr,"the current task stuff id: %d\ttitle: %s\tdiscreption: %s\tstatus: %d\n",task->id, task->title, task->desc, task->status);
+        }else{
+                fprintf(stderr, "DEBUG: Selected item has NULL userptr!\n");
+        }
+    }
+
+    // const char *action = 
+
+    int height = 25;
+    int width = 30;
+    int start_y = (src_height - height) / 2;
+    int start_x = (src_width - width) / 2;
+
+    
+    WINDOW *confirmation_win = newwin(height, width, start_y, start_x);
+
+    box(confirmation_win, 0, 0);
+    mvwprintw(confirmation_win, 1, 2, "Set the status to: ");
+    mvwaddch(confirmation_win, 2, 0, ACS_LTEE);
+    mvwhline(confirmation_win, 2, 1, ACS_HLINE, width - 2);
+    mvwaddch(confirmation_win, 2, width - 1, ACS_RTEE);
+
+    PANEL *conf_panel = new_panel(confirmation_win);
+
+    update_panels();
+    doupdate();
 }

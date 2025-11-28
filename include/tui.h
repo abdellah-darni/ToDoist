@@ -102,4 +102,6 @@ void show_add_task_form(sqlite3 *db);
 void show_tag_menu(WINDOW *parent_win, char *selected_tag);
 void show_add_tag_win(WINDOW *parent_win, char *selected_tag, sqlite3 *db);
 
+void handle_task_status();
+
 #endif
