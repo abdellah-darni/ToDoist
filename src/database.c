@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "database.h"
 
@@ -577,7 +578,7 @@ int update_task(sqlite3 *db, Task *task){
         return -1;
     }
 
-    const char *sql = "UPDATE tasks SET title = ?, description = ?, status = ?, due_date = ?, created_at = ? WHERE id = ?;";
+    const char *sql = "UPDATE tasks SET title = ?, description = ?, status = ?, due_date = ?, created_at = ?, updated_at = ? WHERE id = ?;";
 
     sqlite3_stmt *stmt = NULL;
 
@@ -587,7 +588,12 @@ int update_task(sqlite3 *db, Task *task){
         return -1;
     }
 
-    sqlite3_bind_text(stmt, 1, task->title, -1, SQLITE_STATIC);
+    const char *clean_title;
+    if (task->title != NULL && task->title[0] == '[' && strlen(task->title) > 4) {
+        clean_title = task->title + 4;
+    }
+
+    sqlite3_bind_text(stmt, 1, clean_title, -1, SQLITE_STATIC);
 
     if (task->desc != NULL && strlen(task->desc) > 0) {
         sqlite3_bind_text(stmt, 2, task->desc, -1, SQLITE_STATIC);
@@ -602,7 +608,19 @@ int update_task(sqlite3 *db, Task *task){
         sqlite3_bind_null(stmt, 4);
     }
 
-    sqlite3_bind_int(stmt, 5, task->id);
+    sqlite3_bind_int64(stmt, 5, (sqlite3_int64)task->created_at);
+
+    time_t now = time(NULL);
+    sqlite3_bind_int64(stmt, 6, (sqlite3_int64)now);
+
+    sqlite3_bind_int(stmt, 7, task->id);
+
+    // char *debug_query = sqlite3_expanded_sql(stmt);
+    // if (debug_query) {
+    //     fprintf(stderr, "DEBUG SQL: %s\n", debug_query);
+    //     sqlite3_free(debug_query); 
+    // }
+
 
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
