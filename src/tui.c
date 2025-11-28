@@ -1219,8 +1219,8 @@ void handle_task_status(){
 
     int height = 10;
     int width = 50;
-    int start_y = (src_height - height) / 2;
-    int start_x = (src_width - width) / 2;
+    int start_y = (LINES - height) / 2;
+    int start_x = (COLS - width) / 2;
 
     
     WINDOW *confirmation_win = newwin(height, width, start_y, start_x);
