@@ -1258,7 +1258,12 @@ void handle_task_status(){
         {
         case 10:
             task->status = !task->status;
-            // TODO: call to the function the update the status in the db side
+            int success = update_task(app_state.db, task);
+            const char *message = success ? "Status updated." : "Update failed!";
+            mvwprintw(confirmation_win, height - 4, (width - strlen(message)) / 2, "%s", message);
+            wrefresh(confirmation_win);
+            napms(1000);
+            
             refresh_tasks_view();
             goto exit;
         case 27:
