@@ -1447,12 +1447,11 @@ void show_edit_task_form(sqlite3 *db, Task *task) {
     field_opts_off(fields[3], O_EDIT);
     // field_opts_off(field[3], O_ACTIVE);
     
-    const char *clean_title;
     if (task->title != NULL && task->title[0] == '[' && strlen(task->title) > 4) {
-        clean_title = task->title + 4;
+        task->title = task->title + 4;
     }
 
-    set_field_buffer(fields[0], 0, clean_title);
+    set_field_buffer(fields[0], 0, task->title );
 
     set_field_buffer(fields[1], 0, task->desc);
 
@@ -1561,43 +1560,45 @@ void show_edit_task_form(sqlite3 *db, Task *task) {
                             continue;
                         }
                     }
-                    
-                    TaskFormData new_task = {0};
 
-                    strcpy(new_task.title, title);
+                    if (task->title){
+                        free(task->title-4);
+                    }
+                    task->title = strdup(title);
+
 
                     char *desc = trim_fieldbuf(field_buffer(fields[1], 0));
                     if (desc && desc[0] != '\0'){
-                        strcpy(new_task.description, desc);
-                    }else{
-                        strcpy(new_task.description, "NULL");
+                        if (task->desc){
+                            free(task->desc);
+                        }
+                        task->desc = strdup(desc);
+                    } else {
+                        task->desc = NULL;
                     }
-                    
 
                     // Convert the string date to a unix timestamp
                     if (date && date[0] != '\0'){ 
                         struct tm tm_info = {.tm_sec=0};
                         char * res = strptime(date, "%H:%M %d/%m/%Y", &tm_info);
                         if (res != NULL){
-                            new_task.due_date = mktime(&tm_info);
-                        } else {
-                            new_task.due_date = -1;
+                            task->due_date = mktime(&tm_info);
                         }
                     } else {
-                        new_task.due_date = -1;
+                        task->due_date = -1;
                     }
 
-                    strcpy(new_task.tag_name, trim_fieldbuf(field_buffer(fields[3], 0)));
+                    strcpy(task->tag, trim_fieldbuf(field_buffer(fields[3], 0)));
 
-                    int rc = insert_new_task(db, new_task);
+                    int rc = update_task(db, task);
 
                     if (!rc){
-                        mvwprintw(form_win, 18, 16, "Task saved!");
+                        mvwprintw(form_win, 18, 16, "Task updated!");
                         wrefresh(form_win);
                         napms(1000);
                         goto exit;
                     } else {
-                        mvwprintw(form_win, 18, 16, "Error: Failed to save task.");
+                        mvwprintw(form_win, 18, 16, "Error: Failed to update the task.");
                         wrefresh(form_win); 
                     }
                 }
