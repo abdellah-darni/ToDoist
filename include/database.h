@@ -66,8 +66,7 @@ int insert_new_task(sqlite3 *db, TaskFormData new_task);
 
 int add_task(sqlite3 *db, char *title, char *descreption, int due_date);
 int update_task(sqlite3 *db, Task *task);
-int delete_task();
-int set_task_status();
+int delete_task(sqlite3 *db, Task *task);
 
 
 #endif

@@ -1353,7 +1353,7 @@ void handle_delete_task(){
         {
         case 10:
             task->status = !task->status;
-            // int success = update_task(app_state.db, task);
+            int success = delete_task(app_state.db, task);
             const char *message = success ? "Task deleted." : "Deletion failed!";
             mvwprintw(confirmation_win, height - 4, (width - strlen(message)) / 2, "%s", message);
             wrefresh(confirmation_win);

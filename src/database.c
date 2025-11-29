@@ -626,3 +626,26 @@ int update_task(sqlite3 *db, Task *task){
     sqlite3_finalize(stmt);
     return (rc == SQLITE_DONE);
 }
+
+int delete_task(sqlite3 *db, Task *task){
+
+    if (!db){
+        return 0;
+    }
+
+    const char *sql = "DELETE FROM tasks WHERE id = ?;";
+
+    sqlite3_stmt *stmt = NULL;
+
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK){
+        fprintf(stderr, "Failed to prepare statment [update_task]: %s\n", sqlite3_errmsg(db));
+        return 0;
+    }
+
+    sqlite3_bind_int(stmt, 1, task->id);
+
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE);
+}
