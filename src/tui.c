@@ -131,7 +131,11 @@ void init_tui(sqlite3 *db){
             }
             case 'a':
             case 'A':{
-                handle_add_task();
+                if (current_menu->type == MENU_TYPE_TASK){
+                    handle_add_task();
+                } else if (current_menu->type == MENU_TYPE_TAG){
+                    handle_add_tag();
+                }
                 break;
             }
             case 'e':
