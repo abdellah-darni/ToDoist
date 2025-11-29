@@ -1446,12 +1446,13 @@ void show_edit_task_form(sqlite3 *db, Task *task) {
 
     field_opts_off(fields[3], O_EDIT);
     // field_opts_off(field[3], O_ACTIVE);
-    
+
+    const char *displayed_title = task->title;
     if (task->title != NULL && task->title[0] == '[' && strlen(task->title) > 4) {
-        task->title = task->title + 4;
+        displayed_title = task->title + 4;
     }
 
-    set_field_buffer(fields[0], 0, task->title );
+    set_field_buffer(fields[0], 0, displayed_title );
 
     set_field_buffer(fields[1], 0, task->desc);
 
@@ -1562,9 +1563,10 @@ void show_edit_task_form(sqlite3 *db, Task *task) {
                     }
 
                     if (task->title){
-                        free(task->title-4);
+                        free(task->title);
                     }
                     task->title = strdup(title);
+                    free(title);
 
 
                     char *desc = trim_fieldbuf(field_buffer(fields[1], 0));
@@ -1576,6 +1578,7 @@ void show_edit_task_form(sqlite3 *db, Task *task) {
                     } else {
                         task->desc = NULL;
                     }
+                    if (desc) free(desc);
 
                     // Convert the string date to a unix timestamp
                     if (date && date[0] != '\0'){ 
@@ -1587,8 +1590,12 @@ void show_edit_task_form(sqlite3 *db, Task *task) {
                     } else {
                         task->due_date = -1;
                     }
+                    if (date) free(date);
 
-                    strcpy(task->tag, trim_fieldbuf(field_buffer(fields[3], 0)));
+                    char *tag_input = trim_fieldbuf(field_buffer(fields[3], 0));
+                    if (task->tag) free(task->tag);
+                    task->tag = strdup(tag_input);
+                    if (tag_input) free(tag_input);
 
                     int rc = update_task(db, task);
 
@@ -1635,8 +1642,8 @@ void show_edit_task_form(sqlite3 *db, Task *task) {
     // Cleanup
     unpost_form(form);
     free_form(form);
-    for(int i = 0; i < 3; i++) {
-        free_field(fields[i]);
+    for(int i = 0; i < 4; i++) {
+        if(fields[i]) free_field(fields[i]);
     }
 
     hide_panel(form_panel);
