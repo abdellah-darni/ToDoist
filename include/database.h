@@ -59,10 +59,8 @@ int db_tags_count(sqlite3 *db);
 
 int is_tag_exist(sqlite3 *db, const char *new_tag);
 
-int insert_new_task(sqlite3 *db, TaskFormData new_task);
-
-
 //CRUD 
+int insert_new_task(sqlite3 *db, TaskFormData new_task);
 int update_task(sqlite3 *db, Task *task);
 int delete_task(sqlite3 *db, Task *task);
 

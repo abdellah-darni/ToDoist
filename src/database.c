@@ -392,6 +392,25 @@ int is_tag_exist(sqlite3 *db, const char *new_tag){
     return -1;
 }
 
+int db_tags_count(sqlite3 *db){
+    sqlite3_stmt *stmt;
+    const char *sql = "SELECT COUNT(id) FROM tags;";
+
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
+        return -1;
+    }
+    sqlite3_int64 count = -1;
+    if ((rc = sqlite3_step(stmt)) == SQLITE_ROW){
+        count = sqlite3_column_int(stmt, 0);
+    }
+    sqlite3_finalize(stmt);
+    return (int)count;
+}
+
+// CRUD 
+
 int insert_new_task(sqlite3 *db, TaskFormData new_task){
     if (!db) return 1;
 
@@ -519,25 +538,6 @@ int insert_new_task(sqlite3 *db, TaskFormData new_task){
     return 0;
 
 }
-
-int db_tags_count(sqlite3 *db){
-    sqlite3_stmt *stmt;
-    const char *sql = "SELECT COUNT(id) FROM tags;";
-
-    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
-    if (rc != SQLITE_OK) {
-        fprintf(stderr, "Failed to prepare statement: %s\n", sqlite3_errmsg(db));
-        return -1;
-    }
-    sqlite3_int64 count = -1;
-    if ((rc = sqlite3_step(stmt)) == SQLITE_ROW){
-        count = sqlite3_column_int(stmt, 0);
-    }
-    sqlite3_finalize(stmt);
-    return (int)count;
-}
-
-// CRUD 
 
 int update_task(sqlite3 *db, Task *task){
 
