@@ -545,15 +545,18 @@ int update_task(sqlite3 *db, Task *task){
         return 1;
     }
 
-    const char *sql = "UPDATE tasks SET title = ?, description = ?, status = ?, due_date = ?, created_at = ?, updated_at = ? WHERE id = ?;";
-
     sqlite3_stmt *stmt = NULL;
+    int rc;
+    const char *sql = "UPDATE tasks SET title = ?, description = ?, status = ?, due_date = ?, updated_at = ? WHERE id = ?;";
 
-    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    rc = sqlite3_exec(db, "BEGIN TRANSACTION;", NULL, NULL, NULL);
     if (rc != SQLITE_OK){
-        fprintf(stderr, "Failed to prepare statment [update_task]: %s\n", sqlite3_errmsg(db));
+        fprintf(stderr, "Failed to BEGIN TRANSACTION [update_task]: %s\n", sqlite3_errmsg(db));
         return 1;
     }
+
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK){goto rollback;}
 
     const char *clean_title = task->title;
     if (task->title != NULL && task->title[0] == '[' && strlen(task->title) > 4) {
@@ -575,8 +578,6 @@ int update_task(sqlite3 *db, Task *task){
         sqlite3_bind_null(stmt, 4);
     }
 
-    sqlite3_bind_int64(stmt, 5, (sqlite3_int64)task->created_at);
-
     time_t now = time(NULL);
     sqlite3_bind_int64(stmt, 6, (sqlite3_int64)now);
 
@@ -588,10 +589,62 @@ int update_task(sqlite3 *db, Task *task){
     //     sqlite3_free(debug_query); 
     // }
 
-
     rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE){goto rollback;}
     sqlite3_finalize(stmt);
-    return !(rc == SQLITE_DONE);
+    stmt = NULL;
+    
+    // delete the task-tag assocation
+    const char *del_tag_sql = "DELETE FROM task_tags WHERE task_id = ?;";
+    rc = sqlite3_prepare_v2(db, del_tag_sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK){goto rollback;}
+    sqlite3_bind_int(stmt, 1, task->id);
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE){goto rollback;}
+    sqlite3_finalize(stmt);
+    stmt = NULL;
+
+    if (strcmp(task->tag, "None") == 0){goto commit;}
+
+    const char *insert_tag_sql = "INSERT OR IGNORE INTO tags (name) VALUES (?);";
+    rc = sqlite3_prepare_v2(db, insert_tag_sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK){goto rollback;}
+    sqlite3_bind_text(stmt, 1, task->tag, -1,SQLITE_STATIC);
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE){goto rollback;}
+    sqlite3_finalize(stmt);
+    stmt = NULL;
+
+    sqlite3_int64 tag_id = -1;
+    const char *get_tag_id = "SELECT id FROM tags WHERE name = ?;";
+    rc = sqlite3_prepare_v2(db, get_tag_id, -1, &stmt, NULL);
+    if (rc != SQLITE_OK){goto rollback;}
+    sqlite3_bind_text(stmt, 1, task->tag, -1,SQLITE_STATIC);
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_ROW){goto rollback;}
+    tag_id = sqlite3_column_int64(stmt, 0);
+    sqlite3_finalize(stmt);
+    stmt = NULL;
+
+    if (tag_id == -1){goto commit;}
+    const char *link = "INSERT INTO task_tags (task_id, tag_id) VALUES (?, ?);";
+    rc = sqlite3_prepare_v2(db, link, -1, &stmt, NULL);
+    if (rc != SQLITE_OK){goto rollback;}
+    sqlite3_bind_int64(stmt, 1, task->id);
+    sqlite3_bind_int64(stmt, 2, tag_id);
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE){goto rollback;}
+    sqlite3_finalize(stmt);
+    stmt = NULL;
+
+commit:
+    sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL);
+    return 0;
+
+rollback:
+    if(stmt) sqlite3_finalize(stmt);
+    sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+    return 1;
 }
 
 int delete_task(sqlite3 *db, Task *task){
