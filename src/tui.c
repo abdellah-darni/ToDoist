@@ -139,6 +139,11 @@ void init_tui(sqlite3 *db){
                 handle_task_status();
                 break;
             }
+            case 'd':
+            case 'D':{
+                handle_delete_task();
+                break;
+            }
             case 'q':{
                 cleanup_app_state();
                 endwin();
@@ -1194,7 +1199,6 @@ void handle_task_status(){
     FocusableMenu *tasks_menu = get_focused_menu();
 
     if (!tasks_menu && tasks_menu->type != MENU_TYPE_TASK){
-        fprintf(stderr, "DEBUG: this is not the task win!\n");
         return;
     }
 
@@ -1260,6 +1264,97 @@ void handle_task_status(){
             task->status = !task->status;
             int success = update_task(app_state.db, task);
             const char *message = success ? "Status updated." : "Update failed!";
+            mvwprintw(confirmation_win, height - 4, (width - strlen(message)) / 2, "%s", message);
+            wrefresh(confirmation_win);
+            napms(1000);
+            
+            refresh_tasks_view();
+            goto exit;
+        case 27:
+            goto exit;
+        }
+    }
+
+exit:
+    hide_panel(conf_panel);
+    del_panel(conf_panel);
+    delwin(confirmation_win);
+    update_panels();
+    doupdate();
+    return;
+}
+
+void handle_delete_task(){
+
+    FocusableMenu *tasks_menu = get_focused_menu();
+
+    if (!tasks_menu && tasks_menu->type != MENU_TYPE_TASK){
+        return;
+    }
+
+    if(!tasks_menu->menu && item_count(tasks_menu->menu) < 0){
+        return;
+    }
+
+    ITEM *current_selected_item = current_item(tasks_menu->menu);
+
+    if (!current_selected_item){
+            return;
+    }
+
+    Task *task = (Task *)item_userptr(current_selected_item);
+
+    if(!task){
+        return;
+    }
+
+
+    // const char *action = task->status ? "Pending" : "Done";
+
+    int height = 10;
+    int width = 50;
+    int start_y = (LINES - height) / 2;
+    int start_x = (COLS - width) / 2;
+
+    
+    WINDOW *confirmation_win = newwin(height, width, start_y, start_x);
+
+    box(confirmation_win, 0, 0);
+
+    const char *title = " Confirm Task Deletion ";
+
+    mvwprintw(confirmation_win, 0, (width - strlen(title)) / 2, "%s", title);
+
+    mvwprintw(confirmation_win, 2, 2, "Task: ");
+    wprintw(confirmation_win, "%.35s...", task->title); 
+    mvwprintw(confirmation_win, 4, 2, "Are you sure you want to ");
+    wattron(confirmation_win, A_BOLD);
+    wprintw(confirmation_win, "Delete");
+    wattroff(confirmation_win, A_BOLD);
+    wprintw(confirmation_win, " this task ?");
+
+    const char *help = "[ENTER] Confirm   [ESC] Cancel";
+    mvwprintw(confirmation_win, height - 2, (width - strlen(help)) / 2, "%s", help);
+
+    PANEL *conf_panel = new_panel(confirmation_win);
+    top_panel(conf_panel);
+    update_panels();
+    doupdate();
+
+    int ch;
+    
+    keypad(confirmation_win, TRUE);
+
+    while (1){
+
+        ch = wgetch(confirmation_win);
+
+        switch (ch)
+        {
+        case 10:
+            task->status = !task->status;
+            // int success = update_task(app_state.db, task);
+            const char *message = success ? "Task deleted." : "Deletion failed!";
             mvwprintw(confirmation_win, height - 4, (width - strlen(message)) / 2, "%s", message);
             wrefresh(confirmation_win);
             napms(1000);
