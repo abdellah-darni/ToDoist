@@ -134,6 +134,10 @@ void init_tui(sqlite3 *db){
                 handle_add_task();
                 break;
             }
+            case 'e':
+            case 'E':{
+                
+            }
             case 'c':
             case 'C':{
                 handle_task_status();
@@ -1373,4 +1377,234 @@ exit:
     update_panels();
     doupdate();
     return;
+}
+
+// edit task 
+
+void show_edit_task_form(sqlite3 *db, Task *task) {
+    FIELD *fields[5];
+    FORM *form;
+    WINDOW *form_win, *form_subwin;
+    PANEL *form_panel;
+
+    form_win = create_form_window();
+    keypad(form_win, TRUE);
+
+    char selected_tag[31] = "None"; // the deffault tag is none (no tag) 
+
+    mvwprintw(form_win, 4, 2, "Title:");
+    mvwprintw(form_win, 6, 2, "Description: ");
+    mvwprintw(form_win, 12, 2, "Due Date:");
+    
+    mvwprintw(form_win, 15, 2, "Tag:");
+    mvwprintw(form_win, 15, 16, "[%s] Press TAB to select", selected_tag);
+    
+    mvwprintw(form_win, 22, 2, "ENTER: Save | ESC: Cancel | ↑↓: Navigate | TAB on Tag: Select");
+
+    form_subwin = derwin(form_win, 14, 52, 4, 16);
+
+    fields[0] = new_field(1, 50, 0, 0, 0, 0); //Title
+    fields[1] = new_field(4, 50, 2, 0, 0, 0); // Descreption
+    fields[2] = new_field(1, 16, 8, 0, 0, 0); // Due date
+    fields[3] = new_field(1, 30, 11, 0, 0, 0); // Tag
+    fields[4] = NULL;
+
+    for(int i = 0; i < 4; i++) {
+        set_field_back(fields[i], A_UNDERLINE);
+        field_opts_off(fields[i], O_AUTOSKIP);
+    }
+
+    field_opts_off(fields[3], O_EDIT);
+    // field_opts_off(field[3], O_ACTIVE);
+    
+
+    set_field_buffer(fields[0], 0, task->title);
+    set_field_buffer(fields[1], 0, task->desc);
+
+    if (task->due_date > 0){
+        time_t timestamp = task->due_date;
+        char due_date_buffer[20];
+        struct tm *local_time;
+        local_time = localtime(&timestamp);
+        strftime(due_date_buffer, sizeof(due_date_buffer), "%H:%M %d/%m/%Y", local_time);
+
+        set_field_buffer(fields[2], 0, due_date_buffer);
+    }
+
+    set_field_buffer(fields[3], 0, task->tag);
+
+    form = new_form(fields);
+    set_form_win(form, form_win);
+    set_form_sub(form, form_subwin);
+    post_form(form);
+
+    form_panel = new_panel(form_win);
+    top_panel(form_panel);
+    
+    update_panels();
+    doupdate();
+
+    wattron(form_win, A_DIM);
+    mvwprintw(form_win, 12, 35, "HH:MM DD/MM/YYYY");
+    wattroff(form_win, A_DIM);
+    wrefresh(form_win);
+
+    curs_set(1);
+    pos_form_cursor(form);
+    
+    int ch;
+    int current_field = 0;
+
+    while ((ch = wgetch(form_win)) != 27) {
+        mvwprintw(form_win, 17, 16, "%-45s", "");
+        wrefresh(form_win);
+
+        switch (ch) {
+            case KEY_DOWN:
+                if (current_field < 3){
+                    form_driver(form, REQ_NEXT_FIELD);
+                    form_driver(form, REQ_END_LINE);
+                    current_field++;
+                }
+                break;
+            case KEY_UP:
+                if (current_field > 0){
+                    form_driver(form, REQ_PREV_FIELD);
+                    form_driver(form, REQ_END_LINE);
+                    current_field--;
+                }
+                break;
+            case 9:  // TAB key
+                if (current_field == 3) {  // On tag field
+                    show_tag_menu(form_win, selected_tag);
+                    if (strcmp(selected_tag, "-- Add new tag --") == 0){
+                        show_add_tag_win(form_win, selected_tag, db);
+                    }
+
+                    set_field_buffer(fields[3], 0, selected_tag);
+                    mvwprintw(form_win, 15, 16, "[%-15s] Press TAB to select", selected_tag);
+                    wrefresh(form_win);
+                } else {
+
+                    if (current_field < 3) {
+                        form_driver(form, REQ_NEXT_FIELD);
+                        form_driver(form, REQ_END_LINE);
+                        current_field++;
+                    }
+                }
+                break;
+            case 10:
+                if (current_field < 3) {
+                    form_driver(form, REQ_NEXT_FIELD);
+                    form_driver(form, REQ_END_LINE);
+                    current_field++;
+                } else {
+                    form_driver(form, REQ_VALIDATION);
+
+                    char *title = trim_fieldbuf(field_buffer(fields[0], 0));
+
+                    if (!title || title[0] == '\0'){
+                        mvwprintw(form_win, 17, 16, "Title cannot be empty. Please enter a title.");
+                        current_field = 0;
+                        set_current_field(form, fields[0]);
+                        pos_form_cursor(form);
+                        wrefresh(form_win);
+                        free(title);
+                        continue;
+                    }
+
+                    char *date = trim_fieldbuf(field_buffer(fields[2], 0));
+
+                    if (date && date[0] != '\0'){ // the due date is optional
+                        if(!validate_datetime(date)){
+                            mvwprintw(form_win, 17, 16, "Invalid date. Use HH:MM DD/MM/YYYY.");
+                            current_field = 2;
+                            set_current_field(form, fields[2]);
+                            pos_form_cursor(form);
+                            wrefresh(form_win);
+                            free(date);
+                            continue;
+                        }
+                    }
+                    
+                    TaskFormData new_task = {0};
+
+                    strcpy(new_task.title, title);
+
+                    char *desc = trim_fieldbuf(field_buffer(fields[1], 0));
+                    if (desc && desc[0] != '\0'){
+                        strcpy(new_task.description, desc);
+                    }else{
+                        strcpy(new_task.description, "NULL");
+                    }
+                    
+
+                    // Convert the string date to a unix timestamp
+                    if (date && date[0] != '\0'){ 
+                        struct tm tm_info = {.tm_sec=0};
+                        char * res = strptime(date, "%H:%M %d/%m/%Y", &tm_info);
+                        if (res != NULL){
+                            new_task.due_date = mktime(&tm_info);
+                        } else {
+                            new_task.due_date = -1;
+                        }
+                    } else {
+                        new_task.due_date = -1;
+                    }
+
+                    strcpy(new_task.tag_name, trim_fieldbuf(field_buffer(fields[3], 0)));
+
+                    int rc = insert_new_task(db, new_task);
+
+                    if (!rc){
+                        mvwprintw(form_win, 18, 16, "Task saved!");
+                        wrefresh(form_win);
+                        napms(1000);
+                        goto exit;
+                    } else {
+                        mvwprintw(form_win, 18, 16, "Error: Failed to save task.");
+                        wrefresh(form_win); 
+                    }
+                }
+                break;
+            case KEY_BACKSPACE:
+            case 127:
+            case 8:
+                form_driver(form, REQ_DEL_PREV);
+                break;
+                
+            case KEY_DC:  // Delete key
+                form_driver(form, REQ_DEL_CHAR);
+                break;
+                
+            case KEY_LEFT:
+                form_driver(form, REQ_PREV_CHAR);
+                break;
+                
+            case KEY_RIGHT:
+                form_driver(form, REQ_NEXT_CHAR);
+                break;
+
+            default:
+                form_driver(form, ch);
+                break;
+        }
+        wrefresh(form_win);
+    }
+
+    exit:
+    
+    curs_set(0);
+
+    // Cleanup
+    unpost_form(form);
+    free_form(form);
+    for(int i = 0; i < 3; i++) {
+        free_field(fields[i]);
+    }
+
+    hide_panel(form_panel);
+    del_panel(form_panel);
+    delwin(form_subwin);
+    destroy_form_window(form_win);
 }
