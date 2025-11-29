@@ -1674,3 +1674,38 @@ void handle_add_tag(){
     }
 }
 
+void show_feedback_message(const char *title, const char *message, int is_error) {
+    int height = 5;
+    int width = 40;
+    int start_y = (LINES - height) / 2;
+    int start_x = (COLS - width) / 2;
+
+    WINDOW *msg_win = newwin(height, width, start_y, start_x);
+    box(msg_win, 0, 0);
+
+    wattron(msg_win, A_BOLD);
+    mvwprintw(msg_win, 0, (width - strlen(title)) / 2, " %s ", title);
+    wattroff(msg_win, A_BOLD);
+
+    if (is_error) {
+        wattron(msg_win, A_BOLD); 
+    }
+    mvwprintw(msg_win, 2, (width - strlen(message)) / 2, "%s", message);
+    if (is_error) {
+        wattroff(msg_win, A_BOLD);
+    }
+
+    PANEL *msg_panel = new_panel(msg_win);
+    top_panel(msg_panel);
+    update_panels();
+    doupdate();
+
+    napms(1000); 
+
+    hide_panel(msg_panel);
+    del_panel(msg_panel);
+    delwin(msg_win);
+    
+    update_panels();
+    doupdate();
+}
