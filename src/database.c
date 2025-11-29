@@ -555,7 +555,7 @@ int update_task(sqlite3 *db, Task *task){
         return 1;
     }
 
-    const char *clean_title;
+    const char *clean_title = task->title;
     if (task->title != NULL && task->title[0] == '[' && strlen(task->title) > 4) {
         clean_title = task->title + 4;
     }
