@@ -575,7 +575,7 @@ int add_task(sqlite3 *db, char *title, char *descreption, int due_date){
 int update_task(sqlite3 *db, Task *task){
 
     if (!db){
-        return -1;
+        return 0;
     }
 
     const char *sql = "UPDATE tasks SET title = ?, description = ?, status = ?, due_date = ?, created_at = ?, updated_at = ? WHERE id = ?;";
@@ -585,7 +585,7 @@ int update_task(sqlite3 *db, Task *task){
     int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK){
         fprintf(stderr, "Failed to prepare statment [update_task]: %s\n", sqlite3_errmsg(db));
-        return -1;
+        return 0;
     }
 
     const char *clean_title;
