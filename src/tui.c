@@ -1655,3 +1655,12 @@ void show_edit_task_form(sqlite3 *db, Task *task) {
     delwin(form_subwin);
     destroy_form_window(form_win);
 }
+
+// tag crud:
+
+void handle_add_tag(){
+    char new_tag[31];
+    show_add_tag_win(stdscr, new_tag, app_state.db);
+    insert_new_tag(app_state.db, new_tag);
+    refresh_tags_view();
+}
