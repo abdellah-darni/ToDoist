@@ -136,7 +136,8 @@ void init_tui(sqlite3 *db){
             }
             case 'e':
             case 'E':{
-
+                handle_edit_task();
+                break;
             }
             case 'c':
             case 'C':{
@@ -1446,8 +1447,13 @@ void show_edit_task_form(sqlite3 *db, Task *task) {
     field_opts_off(fields[3], O_EDIT);
     // field_opts_off(field[3], O_ACTIVE);
     
+    const char *clean_title;
+    if (task->title != NULL && task->title[0] == '[' && strlen(task->title) > 4) {
+        clean_title = task->title + 4;
+    }
 
-    set_field_buffer(fields[0], 0, task->title);
+    set_field_buffer(fields[0], 0, clean_title);
+
     set_field_buffer(fields[1], 0, task->desc);
 
     if (task->due_date > 0){
