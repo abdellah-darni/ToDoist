@@ -5,8 +5,12 @@
 
 #define DEFAULT_DB_PATH "data/tasks.db"
 
-
-
+// typedef enum
+// {
+//     TASK_PENDING,
+//     TASK_COMPLETED,
+//     TASK_OVERDUE
+// } TaskStatus;
 
 typedef struct _task{
     int id;
@@ -55,7 +59,14 @@ int db_tags_count(sqlite3 *db);
 
 int is_tag_exist(sqlite3 *db, const char *new_tag);
 
+//CRUD 
 int insert_new_task(sqlite3 *db, TaskFormData new_task);
+int update_task(sqlite3 *db, Task *task);
+int delete_task(sqlite3 *db, Task *task);
+
+// crud tags
+
+int insert_new_tag(sqlite3 *db, const char *new_tag);
 
 
 #endif

@@ -102,4 +102,15 @@ void show_add_task_form(sqlite3 *db);
 void show_tag_menu(WINDOW *parent_win, char *selected_tag);
 void show_add_tag_win(WINDOW *parent_win, char *selected_tag, sqlite3 *db);
 
+void handle_task_status();
+void handle_delete_task();
+void handle_edit_task();
+void show_edit_task_form(sqlite3 *db, Task *task);
+
+// tag crud:
+void handle_add_tag();
+
+
+
+void show_feedback_message(const char *title, const char *message, int is_error);
 #endif

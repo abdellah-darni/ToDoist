@@ -95,11 +95,12 @@ void init_tui(sqlite3 *db){
 
         switch (c)
         {
-            case 9:
+            case 9:{
                 switch_focus_to_next();
                 continue;
+            }
 
-            case KEY_UP:
+            case KEY_UP:{
                 if (current_menu->menu && item_count(current_menu->menu) > 0) {
                     menu_driver(current_menu -> menu, REQ_UP_ITEM);
 
@@ -108,8 +109,8 @@ void init_tui(sqlite3 *db){
                     }
                 }
                 break;
-
-            case KEY_DOWN:
+            }
+            case KEY_DOWN:{
                 if (current_menu->menu && item_count(current_menu->menu) > 0) {
                     menu_driver(current_menu -> menu, REQ_DOWN_ITEM);
 
@@ -118,7 +119,7 @@ void init_tui(sqlite3 *db){
                     }
                 }
                 break;
-
+            }
             case 10: {
                 if (current_menu->type == MENU_TYPE_FILTER){
                     handle_filter_selection();
@@ -129,14 +130,34 @@ void init_tui(sqlite3 *db){
                 break;
             }
             case 'a':
-            case 'A':
-                handle_add_task();
+            case 'A':{
+                if (current_menu->type == MENU_TYPE_TASK){
+                    handle_add_task();
+                } else if (current_menu->type == MENU_TYPE_TAG){
+                    handle_add_tag();
+                }
                 break;
-
-            case 'q':
+            }
+            case 'e':
+            case 'E':{
+                handle_edit_task();
+                break;
+            }
+            case 'c':
+            case 'C':{
+                handle_task_status();
+                break;
+            }
+            case 'd':
+            case 'D':{
+                handle_delete_task();
+                break;
+            }
+            case 'q':{
                 cleanup_app_state();
                 endwin();
                 exit(0);
+            }
             default:
 				break;
         }
@@ -1178,4 +1199,513 @@ void show_add_tag_win(WINDOW *parent_win, char *selected_tag, sqlite3 *db){
     delwin(add_tag_win);
 
     return;
+}
+
+// actions 
+
+void handle_task_status(){
+
+    FocusableMenu *tasks_menu = get_focused_menu();
+
+    if (!tasks_menu && tasks_menu->type != MENU_TYPE_TASK){
+        return;
+    }
+
+    if(!tasks_menu->menu && item_count(tasks_menu->menu) < 0){
+        return;
+    }
+
+    ITEM *current_selected_item = current_item(tasks_menu->menu);
+
+    if (!current_selected_item){
+            return;
+    }
+
+    Task *task = (Task *)item_userptr(current_selected_item);
+
+    if(!task){
+        return;
+    }
+
+
+    const char *action = task->status ? "Pending" : "Done";
+
+    int height = 10;
+    int width = 50;
+    int start_y = (LINES - height) / 2;
+    int start_x = (COLS - width) / 2;
+
+    
+    WINDOW *confirmation_win = newwin(height, width, start_y, start_x);
+
+    box(confirmation_win, 0, 0);
+
+    const char *title = " Confirm Status Change ";
+
+    mvwprintw(confirmation_win, 0, (width - strlen(title)) / 2, "%s", title);
+
+    mvwprintw(confirmation_win, 2, 2, "Task: ");
+    wprintw(confirmation_win, "%.35s...", task->title); 
+    mvwprintw(confirmation_win, 4, 2, "Mark this task as: ");
+    wattron(confirmation_win, A_BOLD);
+    wprintw(confirmation_win, "%s", action);
+    wattroff(confirmation_win, A_BOLD);
+
+    const char *help = "[ENTER] Confirm   [ESC] Cancel";
+    mvwprintw(confirmation_win, height - 2, (width - strlen(help)) / 2, "%s", help);
+
+    PANEL *conf_panel = new_panel(confirmation_win);
+    top_panel(conf_panel);
+    update_panels();
+    doupdate();
+
+    int ch;
+    
+    keypad(confirmation_win, TRUE);
+
+    while (1){
+
+        ch = wgetch(confirmation_win);
+
+        switch (ch)
+        {
+        case 10:
+            task->status = !task->status;
+            int error = update_task(app_state.db, task);
+            const char *message = !error ? "Status updated." : "Update failed!";
+            mvwprintw(confirmation_win, height - 4, (width - strlen(message)) / 2, "%s", message);
+            wrefresh(confirmation_win);
+            napms(1000);
+            
+            refresh_tasks_view();
+            goto exit;
+        case 27:
+            goto exit;
+        }
+    }
+
+exit:
+    hide_panel(conf_panel);
+    del_panel(conf_panel);
+    delwin(confirmation_win);
+    update_panels();
+    doupdate();
+    return;
+}
+
+void handle_delete_task(){
+
+    FocusableMenu *tasks_menu = get_focused_menu();
+
+    if (!tasks_menu && tasks_menu->type != MENU_TYPE_TASK){
+        return;
+    }
+
+    if(!tasks_menu->menu && item_count(tasks_menu->menu) < 0){
+        return;
+    }
+
+    ITEM *current_selected_item = current_item(tasks_menu->menu);
+
+    if (!current_selected_item){
+            return;
+    }
+
+    Task *task = (Task *)item_userptr(current_selected_item);
+
+    if(!task){
+        return;
+    }
+
+
+    // const char *action = task->status ? "Pending" : "Done";
+
+    int height = 10;
+    int width = 50;
+    int start_y = (LINES - height) / 2;
+    int start_x = (COLS - width) / 2;
+
+    
+    WINDOW *confirmation_win = newwin(height, width, start_y, start_x);
+
+    box(confirmation_win, 0, 0);
+
+    const char *title = " Confirm Task Deletion ";
+
+    mvwprintw(confirmation_win, 0, (width - strlen(title)) / 2, "%s", title);
+
+    mvwprintw(confirmation_win, 2, 2, "Task: ");
+    wprintw(confirmation_win, "%.35s...", task->title); 
+    mvwprintw(confirmation_win, 4, 2, "Are you sure you want to ");
+    wattron(confirmation_win, A_BOLD);
+    wprintw(confirmation_win, "Delete");
+    wattroff(confirmation_win, A_BOLD);
+    wprintw(confirmation_win, " this task ?");
+
+    const char *help = "[ENTER] Confirm   [ESC] Cancel";
+    mvwprintw(confirmation_win, height - 2, (width - strlen(help)) / 2, "%s", help);
+
+    PANEL *conf_panel = new_panel(confirmation_win);
+    top_panel(conf_panel);
+    update_panels();
+    doupdate();
+
+    int ch;
+    
+    keypad(confirmation_win, TRUE);
+
+    while (1){
+
+        ch = wgetch(confirmation_win);
+
+        switch (ch)
+        {
+        case 10:
+            task->status = !task->status;
+            int success = delete_task(app_state.db, task);
+            const char *message = success ? "Task deleted." : "Deletion failed!";
+            mvwprintw(confirmation_win, height - 4, (width - strlen(message)) / 2, "%s", message);
+            wrefresh(confirmation_win);
+            napms(1000);
+            
+            refresh_tasks_view();
+            goto exit;
+        case 27:
+            goto exit;
+        }
+    }
+
+exit:
+    hide_panel(conf_panel);
+    del_panel(conf_panel);
+    delwin(confirmation_win);
+    update_panels();
+    doupdate();
+    return;
+}
+
+// edit task 
+
+void handle_edit_task(){
+
+    FocusableMenu *tasks_menu = get_focused_menu();
+
+    if (!tasks_menu && tasks_menu->type != MENU_TYPE_TASK){
+        return;
+    }
+
+    if(!tasks_menu->menu && item_count(tasks_menu->menu) < 0){
+        return;
+    }
+
+    ITEM *current_selected_item = current_item(tasks_menu->menu);
+
+    if (!current_selected_item){
+            return;
+    }
+
+    Task *task = (Task *)item_userptr(current_selected_item);
+
+    if(!task){
+        return;
+    }
+
+    show_edit_task_form(app_state.db, task);
+
+    refrech_all_views();
+}
+
+void show_edit_task_form(sqlite3 *db, Task *task) {
+    FIELD *fields[5];
+    FORM *form;
+    WINDOW *form_win, *form_subwin;
+    PANEL *form_panel;
+
+    form_win = create_form_window();
+    keypad(form_win, TRUE);
+
+    char selected_tag[31] = "None"; // the deffault tag is none (no tag) 
+
+    mvwprintw(form_win, 4, 2, "Title:");
+    mvwprintw(form_win, 6, 2, "Description: ");
+    mvwprintw(form_win, 12, 2, "Due Date:");
+    
+    mvwprintw(form_win, 15, 2, "Tag:");
+    mvwprintw(form_win, 15, 16, "[%s] Press TAB to select", selected_tag);
+    
+    mvwprintw(form_win, 22, 2, "ENTER: Save | ESC: Cancel | ↑↓: Navigate | TAB on Tag: Select");
+
+    form_subwin = derwin(form_win, 14, 52, 4, 16);
+
+    fields[0] = new_field(1, 50, 0, 0, 0, 0); //Title
+    fields[1] = new_field(4, 50, 2, 0, 0, 0); // Descreption
+    fields[2] = new_field(1, 16, 8, 0, 0, 0); // Due date
+    fields[3] = new_field(1, 30, 11, 0, 0, 0); // Tag
+    fields[4] = NULL;
+
+    for(int i = 0; i < 4; i++) {
+        set_field_back(fields[i], A_UNDERLINE);
+        field_opts_off(fields[i], O_AUTOSKIP);
+    }
+
+    field_opts_off(fields[3], O_EDIT);
+    // field_opts_off(field[3], O_ACTIVE);
+
+    const char *displayed_title = task->title;
+    if (task->title != NULL && task->title[0] == '[' && strlen(task->title) > 4) {
+        displayed_title = task->title + 4;
+    }
+
+    set_field_buffer(fields[0], 0, displayed_title );
+
+    set_field_buffer(fields[1], 0, task->desc);
+
+    if (task->due_date > 0){
+        time_t timestamp = task->due_date;
+        char due_date_buffer[20];
+        struct tm *local_time;
+        local_time = localtime(&timestamp);
+        strftime(due_date_buffer, sizeof(due_date_buffer), "%H:%M %d/%m/%Y", local_time);
+
+        set_field_buffer(fields[2], 0, due_date_buffer);
+    }
+
+    set_field_buffer(fields[3], 0, task->tag);
+
+    form = new_form(fields);
+    set_form_win(form, form_win);
+    set_form_sub(form, form_subwin);
+    post_form(form);
+
+    form_panel = new_panel(form_win);
+    top_panel(form_panel);
+    
+    update_panels();
+    doupdate();
+
+    wattron(form_win, A_DIM);
+    mvwprintw(form_win, 12, 35, "HH:MM DD/MM/YYYY");
+    wattroff(form_win, A_DIM);
+    wrefresh(form_win);
+
+    curs_set(1);
+    pos_form_cursor(form);
+    
+    int ch;
+    int current_field = 0;
+
+    while ((ch = wgetch(form_win)) != 27) {
+        mvwprintw(form_win, 17, 16, "%-45s", "");
+        wrefresh(form_win);
+
+        switch (ch) {
+            case KEY_DOWN:
+                if (current_field < 3){
+                    form_driver(form, REQ_NEXT_FIELD);
+                    form_driver(form, REQ_END_LINE);
+                    current_field++;
+                }
+                break;
+            case KEY_UP:
+                if (current_field > 0){
+                    form_driver(form, REQ_PREV_FIELD);
+                    form_driver(form, REQ_END_LINE);
+                    current_field--;
+                }
+                break;
+            case 9:  // TAB key
+                if (current_field == 3) {  // On tag field
+                    show_tag_menu(form_win, selected_tag);
+                    if (strcmp(selected_tag, "-- Add new tag --") == 0){
+                        show_add_tag_win(form_win, selected_tag, db);
+                    }
+
+                    set_field_buffer(fields[3], 0, selected_tag);
+                    mvwprintw(form_win, 15, 16, "[%-15s] Press TAB to select", selected_tag);
+                    wrefresh(form_win);
+                } else {
+
+                    if (current_field < 3) {
+                        form_driver(form, REQ_NEXT_FIELD);
+                        form_driver(form, REQ_END_LINE);
+                        current_field++;
+                    }
+                }
+                break;
+            case 10:
+                if (current_field < 3) {
+                    form_driver(form, REQ_NEXT_FIELD);
+                    form_driver(form, REQ_END_LINE);
+                    current_field++;
+                } else {
+                    form_driver(form, REQ_VALIDATION);
+
+                    char *title = trim_fieldbuf(field_buffer(fields[0], 0));
+
+                    if (!title || title[0] == '\0'){
+                        mvwprintw(form_win, 17, 16, "Title cannot be empty. Please enter a title.");
+                        current_field = 0;
+                        set_current_field(form, fields[0]);
+                        pos_form_cursor(form);
+                        wrefresh(form_win);
+                        free(title);
+                        continue;
+                    }
+
+                    char *date = trim_fieldbuf(field_buffer(fields[2], 0));
+
+                    if (date && date[0] != '\0'){ // the due date is optional
+                        if(!validate_datetime(date)){
+                            mvwprintw(form_win, 17, 16, "Invalid date. Use HH:MM DD/MM/YYYY.");
+                            current_field = 2;
+                            set_current_field(form, fields[2]);
+                            pos_form_cursor(form);
+                            wrefresh(form_win);
+                            free(date);
+                            continue;
+                        }
+                    }
+
+                    if (task->title){
+                        free(task->title);
+                    }
+                    task->title = strdup(title);
+                    free(title);
+
+
+                    char *desc = trim_fieldbuf(field_buffer(fields[1], 0));
+                    if (desc && desc[0] != '\0'){
+                        if (task->desc){
+                            free(task->desc);
+                        }
+                        task->desc = strdup(desc);
+                    } else {
+                        task->desc = NULL;
+                    }
+                    if (desc) free(desc);
+
+                    // Convert the string date to a unix timestamp
+                    if (date && date[0] != '\0'){ 
+                        struct tm tm_info = {.tm_sec=0};
+                        char * res = strptime(date, "%H:%M %d/%m/%Y", &tm_info);
+                        if (res != NULL){
+                            task->due_date = mktime(&tm_info);
+                        }
+                    } else {
+                        task->due_date = -1;
+                    }
+                    if (date) free(date);
+
+                    char *tag_input = trim_fieldbuf(field_buffer(fields[3], 0));
+                    if (task->tag) free(task->tag);
+                    task->tag = strdup(tag_input);
+                    if (tag_input) free(tag_input);
+
+                    int rc = update_task(db, task);
+
+                    if (!rc){
+                        mvwprintw(form_win, 18, 16, "Task updated!");
+                        wrefresh(form_win);
+                        napms(1000);
+                        goto exit;
+                    } else {
+                        mvwprintw(form_win, 18, 16, "Error: Failed to update the task.");
+                        wrefresh(form_win); 
+                    }
+                }
+                break;
+            case KEY_BACKSPACE:
+            case 127:
+            case 8:
+                form_driver(form, REQ_DEL_PREV);
+                break;
+                
+            case KEY_DC:  // Delete key
+                form_driver(form, REQ_DEL_CHAR);
+                break;
+                
+            case KEY_LEFT:
+                form_driver(form, REQ_PREV_CHAR);
+                break;
+                
+            case KEY_RIGHT:
+                form_driver(form, REQ_NEXT_CHAR);
+                break;
+
+            default:
+                form_driver(form, ch);
+                break;
+        }
+        wrefresh(form_win);
+    }
+
+    exit:
+    
+    curs_set(0);
+
+    // Cleanup
+    unpost_form(form);
+    free_form(form);
+    for(int i = 0; i < 4; i++) {
+        if(fields[i]) free_field(fields[i]);
+    }
+
+    hide_panel(form_panel);
+    del_panel(form_panel);
+    delwin(form_subwin);
+    destroy_form_window(form_win);
+}
+
+// tag crud:
+
+void handle_add_tag(){
+    char new_tag[31] = "";
+    show_add_tag_win(stdscr, new_tag, app_state.db);
+    if (strlen(new_tag) > 0 && strcmp(new_tag, "None") != 0) {
+        int rc = insert_new_tag(app_state.db, new_tag);
+        if (rc == 0) {
+            show_feedback_message("Success", "Tag added successfully!", 0);
+            refresh_tags_view();
+        } else {
+            char error_msg[64];
+            snprintf(error_msg, sizeof(error_msg), "Failed to add tag '%s'", new_tag);
+            show_feedback_message("Error", error_msg, 1);
+        }
+    }
+}
+
+void show_feedback_message(const char *title, const char *message, int is_error) {
+    int height = 5;
+    int width = 40;
+    int start_y = (LINES - height) / 2;
+    int start_x = (COLS - width) / 2;
+
+    WINDOW *msg_win = newwin(height, width, start_y, start_x);
+    box(msg_win, 0, 0);
+
+    wattron(msg_win, A_BOLD);
+    mvwprintw(msg_win, 0, (width - strlen(title)) / 2, " %s ", title);
+    wattroff(msg_win, A_BOLD);
+
+    if (is_error) {
+        wattron(msg_win, A_BOLD); 
+    }
+    mvwprintw(msg_win, 2, (width - strlen(message)) / 2, "%s", message);
+    if (is_error) {
+        wattroff(msg_win, A_BOLD);
+    }
+
+    PANEL *msg_panel = new_panel(msg_win);
+    top_panel(msg_panel);
+    update_panels();
+    doupdate();
+
+    napms(1000); 
+
+    hide_panel(msg_panel);
+    del_panel(msg_panel);
+    delwin(msg_win);
+    
+    update_panels();
+    doupdate();
 }
