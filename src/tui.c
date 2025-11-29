@@ -1659,8 +1659,18 @@ void show_edit_task_form(sqlite3 *db, Task *task) {
 // tag crud:
 
 void handle_add_tag(){
-    char new_tag[31];
+    char new_tag[31] = "";
     show_add_tag_win(stdscr, new_tag, app_state.db);
-    insert_new_tag(app_state.db, new_tag);
-    refresh_tags_view();
+    if (strlen(new_tag) > 0 && strcmp(new_tag, "None") != 0) {
+        int rc = insert_new_tag(app_state.db, new_tag);
+        if (rc == 0) {
+            show_feedback_message("Success", "Tag added successfully!", 0);
+            refresh_tags_view();
+        } else {
+            char error_msg[64];
+            snprintf(error_msg, sizeof(error_msg), "Failed to add tag '%s'", new_tag);
+            show_feedback_message("Error", error_msg, 1);
+        }
+    }
 }
+
