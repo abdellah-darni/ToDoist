@@ -669,3 +669,35 @@ int delete_task(sqlite3 *db, Task *task){
     sqlite3_finalize(stmt);
     return (rc == SQLITE_DONE);
 }
+
+int insert_new_tag(sqlite3 *db, const char *new_tag){
+
+    if (!db) return 1;
+
+    const char *sql = "INSERT INTO tags (name) VALUES (?);";
+
+    sqlite3_stmt *stmt = NULL;
+    int rc;
+
+    rc = sqlite3_exec(db, "BEGIN TRANSACTION;", 0, 0, NULL);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
+        return 1;
+    }
+
+    rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK){goto rollback;}
+
+    sqlite3_bind_text(stmt, 1, new_tag, -1, SQLITE_STATIC);
+    rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE){goto rollback;}
+    sqlite3_finalize(stmt);
+
+    sqlite3_exec(db, "COMMIT;", NULL, NULL, NULL);
+    return 0;
+
+rollback:
+    if(stmt) sqlite3_finalize(stmt);
+    sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
+    return 1;
+}
