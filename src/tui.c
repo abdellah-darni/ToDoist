@@ -1267,8 +1267,8 @@ void handle_task_status(){
         {
         case 10:
             task->status = !task->status;
-            int success = update_task(app_state.db, task);
-            const char *message = success ? "Status updated." : "Update failed!";
+            int error = update_task(app_state.db, task);
+            const char *message = !error ? "Status updated." : "Update failed!";
             mvwprintw(confirmation_win, height - 4, (width - strlen(message)) / 2, "%s", message);
             wrefresh(confirmation_win);
             napms(1000);
