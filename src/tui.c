@@ -136,7 +136,7 @@ void init_tui(sqlite3 *db){
             }
             case 'e':
             case 'E':{
-                
+
             }
             case 'c':
             case 'C':{
@@ -1380,6 +1380,35 @@ exit:
 }
 
 // edit task 
+
+void handle_edit_task(){
+
+    FocusableMenu *tasks_menu = get_focused_menu();
+
+    if (!tasks_menu && tasks_menu->type != MENU_TYPE_TASK){
+        return;
+    }
+
+    if(!tasks_menu->menu && item_count(tasks_menu->menu) < 0){
+        return;
+    }
+
+    ITEM *current_selected_item = current_item(tasks_menu->menu);
+
+    if (!current_selected_item){
+            return;
+    }
+
+    Task *task = (Task *)item_userptr(current_selected_item);
+
+    if(!task){
+        return;
+    }
+
+    show_edit_task_form(app_state.db, task);
+
+    refrech_all_views();
+}
 
 void show_edit_task_form(sqlite3 *db, Task *task) {
     FIELD *fields[5];
