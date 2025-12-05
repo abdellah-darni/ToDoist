@@ -701,3 +701,26 @@ rollback:
     sqlite3_exec(db, "ROLLBACK;", NULL, NULL, NULL);
     return 1;
 }
+
+int delete_tag(sqlite3 *db, const char *tag){
+
+    if (!db){
+        return 0;
+    }
+
+    const char *sql = "DELETE FROM tags WHERE name = ?;";
+
+    sqlite3_stmt *stmt = NULL;
+
+    int rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    if (rc != SQLITE_OK){
+        fprintf(stderr, "Failed to prepare statment [update_task]: %s\n", sqlite3_errmsg(db));
+        return 0;
+    }
+
+    sqlite3_bind_text(stmt, 1, tag, -1, SQLITE_STATIC);
+
+    rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return (rc == SQLITE_DONE);
+}
