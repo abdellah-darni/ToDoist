@@ -579,9 +579,9 @@ int update_task(sqlite3 *db, Task *task){
     }
 
     time_t now = time(NULL);
-    sqlite3_bind_int64(stmt, 6, (sqlite3_int64)now);
+    sqlite3_bind_int64(stmt, 5, (sqlite3_int64)now);
 
-    sqlite3_bind_int(stmt, 7, task->id);
+    sqlite3_bind_int(stmt, 6, task->id);
 
     // char *debug_query = sqlite3_expanded_sql(stmt);
     // if (debug_query) {
@@ -604,7 +604,7 @@ int update_task(sqlite3 *db, Task *task){
     sqlite3_finalize(stmt);
     stmt = NULL;
 
-    if (strcmp(task->tag, "None") == 0){goto commit;}
+    if (!task->tag || strcmp(task->tag, "None") == 0){goto commit;}
 
     const char *insert_tag_sql = "INSERT OR IGNORE INTO tags (name) VALUES (?);";
     rc = sqlite3_prepare_v2(db, insert_tag_sql, -1, &stmt, NULL);
