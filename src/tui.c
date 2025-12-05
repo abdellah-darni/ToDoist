@@ -150,7 +150,11 @@ void init_tui(sqlite3 *db){
             }
             case 'd':
             case 'D':{
-                handle_delete_task();
+                if (current_menu->type == MENU_TYPE_TASK){
+                    handle_delete_task();
+                } else if (current_menu->type == MENU_TYPE_TAG){
+                    handle_delete_tag();
+                }
                 break;
             }
             case 'q':{
@@ -1673,6 +1677,82 @@ void handle_add_tag(){
         }
     }
 }
+
+void handle_delete_tag(){ // if the tags has tasks link to it i need to do a confiramation on top of the confiramtion 
+
+    FocusableMenu *tags_menu = get_focused_menu();
+    if (tags_menu->type != MENU_TYPE_TAG) return;
+
+    ITEM *current_tag = current_item(tags_menu->menu);
+    if(!current_tag) return;
+
+    const char *current_tag_name = item_name(current_tag);
+
+    // if (strcmp(current_tag_name, "None") == 0) return;
+
+    int height = 10;
+    int width = 50;
+    int start_y = (LINES - height) / 2;
+    int start_x = (COLS - width) / 2;
+
+    
+    WINDOW *confirmation_win = newwin(height, width, start_y, start_x);
+
+    box(confirmation_win, 0, 0);
+
+    const char *title = " Confirm Tag Deletion ";
+
+    mvwprintw(confirmation_win, 0, (width - strlen(title)) / 2, "%s", title);
+
+    mvwprintw(confirmation_win, 2, 2, "Tag: ");
+    wprintw(confirmation_win, "%.35s", current_tag_name); 
+    mvwprintw(confirmation_win, 4, 2, "Are sure you want to ");
+    wattron(confirmation_win, A_BOLD);
+    wprintw(confirmation_win, "delete");
+    wattroff(confirmation_win, A_BOLD);
+    wprintw(confirmation_win," this tag ?");
+
+    const char *help = "[ENTER] Confirm   [ESC] Cancel";
+    mvwprintw(confirmation_win, height - 2, (width - strlen(help)) / 2, "%s", help);
+
+    PANEL *conf_panel = new_panel(confirmation_win);
+    top_panel(conf_panel);
+    update_panels();
+    doupdate();
+
+    int ch;
+    
+    keypad(confirmation_win, TRUE);
+
+    while (1){
+
+        ch = wgetch(confirmation_win);
+
+        switch (ch)
+        {
+        case 10:
+            int error = delete_tag(app_state.db, current_tag_name);
+            const char *message = !error ? "Tag deleted." : "Deletion failed!";
+            mvwprintw(confirmation_win, height - 4, (width - strlen(message)) / 2, "%s", message);
+            wrefresh(confirmation_win);
+            napms(1000);
+            
+            refresh_tags_view();
+            goto exit;
+        case 27:
+            goto exit;
+        }
+    }
+
+exit:
+    hide_panel(conf_panel);
+    del_panel(conf_panel);
+    delwin(confirmation_win);
+    update_panels();
+    doupdate();
+    return;
+}
+
 
 void show_feedback_message(const char *title, const char *message, int is_error) {
     int height = 5;

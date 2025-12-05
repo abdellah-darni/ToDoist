@@ -109,6 +109,7 @@ void show_edit_task_form(sqlite3 *db, Task *task);
 
 // tag crud:
 void handle_add_tag();
+void handle_delete_tag();
 
 
 
