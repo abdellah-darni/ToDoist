@@ -360,7 +360,7 @@ Task * task_placeholder(const char *title, const char *desc){
         return NULL;
     }
 
-    error_task->id = -1;
+    error_task->id = "error";
     error_task->title = title ? strdup(title) : NULL;
     error_task->desc = desc ? strdup(desc) : NULL;
     error_task->status = 0;
@@ -504,11 +504,11 @@ int insert_new_task(sqlite3 *db, TaskFormData new_task){
                 return 1;
             }
         } else if (rc == SQLITE_ROW){
-            unsigned char * tmp_tag_id = sqlite3_column_text(stmt, 0);
+            const unsigned char * tmp_tag_id = sqlite3_column_text(stmt, 0);
 
             if (tmp_tag_id != NULL){
                 strncpy(tag_id, (const char *)tmp_tag_id, sizeof(tag_id) - 1);
-                tag_id[sizeof(tag_id) - 1];
+                tag_id[sizeof(tag_id) - 1] = '\0';
             }
         }
 
@@ -649,7 +649,7 @@ int update_task(sqlite3 *db, Task *task){
     rc = sqlite3_prepare_v2(db, link, -1, &stmt, NULL);
     if (rc != SQLITE_OK){goto rollback;}
     sqlite3_bind_text(stmt, 1, task->id, -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int64(stmt, 2, tag_uuid, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, tag_uuid, -1, SQLITE_TRANSIENT);
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_DONE){goto rollback;}
     sqlite3_finalize(stmt);
@@ -687,12 +687,12 @@ int delete_task(sqlite3 *db, Task *task){
     sqlite3_finalize(stmt);
     return (rc == SQLITE_DONE);
 }
-//TODO: we are here in refacturing to uuid 
+
 int insert_new_tag(sqlite3 *db, const char *new_tag){
 
     if (!db) return 1;
 
-    const char *sql = "INSERT INTO tags (name) VALUES (?);";
+    const char *sql = "INSERT INTO tags (id, name) VALUES (?, ?);";
 
     sqlite3_stmt *stmt = NULL;
     int rc;
@@ -706,7 +706,11 @@ int insert_new_tag(sqlite3 *db, const char *new_tag){
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK){goto rollback;}
 
-    sqlite3_bind_text(stmt, 1, new_tag, -1, SQLITE_STATIC);
+    char tag_uuid[37] = {0};
+    generate_uuid(tag_uuid);
+
+    sqlite3_bind_text(stmt, 1, tag_uuid, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, new_tag, -1, SQLITE_STATIC);
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_DONE){goto rollback;}
     sqlite3_finalize(stmt);
