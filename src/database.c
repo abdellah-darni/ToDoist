@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <uuid/uuid.h>
 
 #include "database.h"
 
@@ -22,21 +23,21 @@ sqlite3* db_open(const char* filename){
 int db_init_schema(sqlite3* db){
     const char *create_tables_sql[] = {
       "CREATE TABLE IF NOT EXISTS tasks ("
-        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "id TEXT PRIMARY KEY,"
         "title TEXT NOT NULL,"
         "description TEXT,"
         "status INTEGER DEFAULT 0,"
         "due_date INTEGER,"
-        "created_at INTEGER DEFAULT (strftime('%s','now')),"
-        "updated_at INTEGER DEFAULT (strftime('%s','now'))"
+        "created_at INTEGER DEFAULT (unixepoch()),"
+        "updated_at INTEGER DEFAULT (unixepoch())"
       ");",
       "CREATE TABLE IF NOT EXISTS tags ("
-        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "id TEXT PRIMARY KEY,"
         "name TEXT NOT NULL UNIQUE"
       ");",
       "CREATE TABLE IF NOT EXISTS task_tags ("
-        "task_id INTEGER NOT NULL,"
-        "tag_id  INTEGER NOT NULL,"
+        "task_id TEXT NOT NULL,"
+        "tag_id  TEXT NOT NULL,"
         "PRIMARY KEY (task_id, tag_id),"
         "FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,"
         "FOREIGN KEY (tag_id)  REFERENCES tags(id)  ON DELETE CASCADE"
@@ -53,6 +54,13 @@ int db_init_schema(sqlite3* db){
         }
     }
     return 0;
+}
+
+// uuid generation helper function :
+void generate_uuid(char *out_uuid){
+    uuid_t b_uuid;
+    uuid_generate(b_uuid);
+    uuid_unparse_lower(b_uuid, out_uuid);
 }
 
 int load_tags(sqlite3 *db, char ***tags_list, int *tag_count) {
@@ -222,7 +230,9 @@ int load_tasks_fillterd(sqlite3 *db, MenuData *data, const char *where_clause){
 
     while((rc = sqlite3_step(stmt)) == SQLITE_ROW){
         Task tmp;
-        tmp.id          = sqlite3_column_int(stmt, 0);
+
+        const unsigned char *id_txt = sqlite3_column_text(stmt, 0);
+        tmp.id = id_txt ? strdup((const char *)id_txt) : NULL;
         
         const unsigned char *d = sqlite3_column_text(stmt, 2);
         tmp.desc        = d ? strdup((const char *)d) : NULL;
@@ -279,7 +289,6 @@ int load_tasks_fillterd(sqlite3 *db, MenuData *data, const char *where_clause){
     data->task_count = db_tasks_count;
 
     return 0;
-   
 }
 
 void free_task_field(Task *task){
@@ -414,12 +423,12 @@ int db_tags_count(sqlite3 *db){
 int insert_new_task(sqlite3 *db, TaskFormData new_task){
     if (!db) return 1;
 
-    sqlite3_int64 tag_id = -1;
-    sqlite3_int64 new_added_task_id = -1;
+    char tag_id[37] = {0};
+    char new_added_task_id[37] = {0};
 
     sqlite3_stmt *stmt = NULL;
-    const char *insert_task_sql = "INSERT INTO tasks (title, description, due_date) VALUES(?, ?, ?) RETURNING id;";
-    const char *insert_tag_sql = "INSERT INTO tags (name) VALUES(?) RETURNING id;";
+    const char *insert_task_sql = "INSERT INTO tasks (id, title, description, due_date) VALUES(?, ?, ?, ?);";
+    const char *insert_tag_sql = "INSERT INTO tags (id, name) VALUES(?, ?);";
     const char *tag_id_sql = "SELECT id from tags where name = ?;";
     const char *task_tag_association_sql = "INSERT INTO task_tags (task_id, tag_id) VALUES(?, ?);";
     int rc;
@@ -439,21 +448,16 @@ int insert_new_task(sqlite3 *db, TaskFormData new_task){
         return 1;
     }
 
-    sqlite3_bind_text(stmt, 1, new_task.title, -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 2, new_task.description, -1, SQLITE_TRANSIENT);
-    if(new_task.due_date == -1){
-        sqlite3_bind_null(stmt, 3);
-    } else {
-        sqlite3_bind_int64(stmt, 3, (sqlite3_int64)new_task.due_date);
-    }
+    // task uuid generation
+    generate_uuid(new_added_task_id); // TODO: add some checks later
 
-    if ((rc = sqlite3_step(stmt)) == SQLITE_ROW){
-        new_added_task_id = sqlite3_column_int64(stmt, 0);
+    sqlite3_bind_text16(stmt, 1, new_added_task_id, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, new_task.title, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, new_task.description, -1, SQLITE_TRANSIENT);
+    if(new_task.due_date == -1){
+        sqlite3_bind_null(stmt, 4);
     } else {
-        fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
-        sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
-        sqlite3_finalize(stmt);
-        return 1;
+        sqlite3_bind_int64(stmt, 4, (sqlite3_int64)new_task.due_date);
     }
 
     if ((rc = sqlite3_step(stmt))!= SQLITE_DONE){
@@ -487,17 +491,25 @@ int insert_new_task(sqlite3 *db, TaskFormData new_task){
                 sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
                 return 1;
             }
-            sqlite3_bind_text(stmt, 1, new_task.tag_name, -1, SQLITE_TRANSIENT);
-            if ((rc = sqlite3_step(stmt))== SQLITE_ROW){
-                tag_id = sqlite3_column_int64(stmt, 0);
-            } else {
+
+            generate_uuid(tag_id);
+            sqlite3_bind_text(stmt, 1, tag_id, -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 2, new_task.tag_name, -1, SQLITE_TRANSIENT);
+            rc = sqlite3_step(stmt);
+
+            if (rc != SQLITE_DONE){
                 fprintf(stderr, " 511: SQL error: %s\n", sqlite3_errmsg(db));
                 sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
                 sqlite3_finalize(stmt);
                 return 1;
             }
         } else if (rc == SQLITE_ROW){
-            tag_id = sqlite3_column_int64(stmt, 0);
+            unsigned char * tmp_tag_id = sqlite3_column_text(stmt, 0);
+
+            if (tmp_tag_id != NULL){
+                strncpy(tag_id, (const char *)tmp_tag_id, sizeof(tag_id) - 1);
+                tag_id[sizeof(tag_id) - 1];
+            }
         }
 
         if ((rc = sqlite3_step(stmt))!= SQLITE_DONE){
@@ -517,8 +529,8 @@ int insert_new_task(sqlite3 *db, TaskFormData new_task){
             return 1;
         }
 
-        sqlite3_bind_int64(stmt, 1, new_added_task_id);
-        sqlite3_bind_int64(stmt, 2, tag_id);
+        sqlite3_bind_text(stmt, 1, new_added_task_id, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 2, tag_id, -1, SQLITE_TRANSIENT);
 
         if ((rc = sqlite3_step(stmt))!= SQLITE_DONE){
             fprintf(stderr, "SQL error: %s\n", sqlite3_errmsg(db));
@@ -536,7 +548,6 @@ int insert_new_task(sqlite3 *db, TaskFormData new_task){
     }
 
     return 0;
-
 }
 
 int update_task(sqlite3 *db, Task *task){
@@ -581,7 +592,7 @@ int update_task(sqlite3 *db, Task *task){
     time_t now = time(NULL);
     sqlite3_bind_int64(stmt, 5, (sqlite3_int64)now);
 
-    sqlite3_bind_int(stmt, 6, task->id);
+    sqlite3_bind_text(stmt, 6, task->id, -1, SQLITE_TRANSIENT);
 
     // char *debug_query = sqlite3_expanded_sql(stmt);
     // if (debug_query) {
@@ -598,7 +609,7 @@ int update_task(sqlite3 *db, Task *task){
     const char *del_tag_sql = "DELETE FROM task_tags WHERE task_id = ?;";
     rc = sqlite3_prepare_v2(db, del_tag_sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK){goto rollback;}
-    sqlite3_bind_int(stmt, 1, task->id);
+    sqlite3_bind_text(stmt, 1, task->id, -1, SQLITE_TRANSIENT);
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_DONE){goto rollback;}
     sqlite3_finalize(stmt);
@@ -606,32 +617,39 @@ int update_task(sqlite3 *db, Task *task){
 
     if (!task->tag || strcmp(task->tag, "None") == 0){goto commit;}
 
-    const char *insert_tag_sql = "INSERT OR IGNORE INTO tags (name) VALUES (?);";
+    char tag_uuid[37] = {0};
+    generate_uuid(tag_uuid);
+
+    const char *insert_tag_sql = "INSERT OR IGNORE INTO tags (id, name) VALUES (?, ?);";
     rc = sqlite3_prepare_v2(db, insert_tag_sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK){goto rollback;}
-    sqlite3_bind_text(stmt, 1, task->tag, -1,SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 1, tag_uuid, -1,SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, task->tag, -1,SQLITE_STATIC);
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_DONE){goto rollback;}
     sqlite3_finalize(stmt);
     stmt = NULL;
 
-    sqlite3_int64 tag_id = -1;
     const char *get_tag_id = "SELECT id FROM tags WHERE name = ?;";
     rc = sqlite3_prepare_v2(db, get_tag_id, -1, &stmt, NULL);
     if (rc != SQLITE_OK){goto rollback;}
     sqlite3_bind_text(stmt, 1, task->tag, -1,SQLITE_STATIC);
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_ROW){goto rollback;}
-    tag_id = sqlite3_column_int64(stmt, 0);
+    const unsigned char *retrived_id = sqlite3_column_text(stmt, 0);
+    if(retrived_id != NULL){
+        strncpy(tag_uuid, (const char *)retrived_id, sizeof(tag_uuid) - 1);
+        tag_uuid[sizeof(tag_uuid) - 1] = '\0';
+    }
     sqlite3_finalize(stmt);
     stmt = NULL;
 
-    if (tag_id == -1){goto commit;}
+    if (tag_uuid[0] == '\0'){goto commit;}
     const char *link = "INSERT INTO task_tags (task_id, tag_id) VALUES (?, ?);";
     rc = sqlite3_prepare_v2(db, link, -1, &stmt, NULL);
     if (rc != SQLITE_OK){goto rollback;}
-    sqlite3_bind_int64(stmt, 1, task->id);
-    sqlite3_bind_int64(stmt, 2, tag_id);
+    sqlite3_bind_text(stmt, 1, task->id, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 2, tag_uuid, -1, SQLITE_TRANSIENT);
     rc = sqlite3_step(stmt);
     if (rc != SQLITE_DONE){goto rollback;}
     sqlite3_finalize(stmt);
@@ -663,13 +681,13 @@ int delete_task(sqlite3 *db, Task *task){
         return 0;
     }
 
-    sqlite3_bind_int(stmt, 1, task->id);
+    sqlite3_bind_text(stmt, 1, task->id, -1, SQLITE_TRANSIENT);
 
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     return (rc == SQLITE_DONE);
 }
-
+//TODO: we are here in refacturing to uuid 
 int insert_new_tag(sqlite3 *db, const char *new_tag){
 
     if (!db) return 1;
@@ -724,3 +742,8 @@ int delete_tag(sqlite3 *db, const char *tag){
     sqlite3_finalize(stmt);
     return (rc == SQLITE_DONE);
 }
+
+
+// TODO: add isDeleted column in the task table and the tag table 
+// TODO: change delete an entry to mark isDeleted as True and not deleting the actual entry
+// TODO: when deleting a tag associated with tasks a prompt should apear and ask if we want to delete the tasks or chnage them to the defoults tag

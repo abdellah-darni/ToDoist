@@ -13,7 +13,7 @@
 // } TaskStatus;
 
 typedef struct _task{
-    int id;
+    char* id;
     char *title;
     char *desc;
     int status;
