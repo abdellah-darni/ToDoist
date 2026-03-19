@@ -451,7 +451,7 @@ int insert_new_task(sqlite3 *db, TaskFormData new_task){
     // task uuid generation
     generate_uuid(new_added_task_id); // TODO: add some checks later
 
-    sqlite3_bind_text16(stmt, 1, new_added_task_id, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 1, new_added_task_id, -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 2, new_task.title, -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 3, new_task.description, -1, SQLITE_TRANSIENT);
     if(new_task.due_date == -1){
@@ -512,7 +512,7 @@ int insert_new_task(sqlite3 *db, TaskFormData new_task){
             }
         }
 
-        if ((rc = sqlite3_step(stmt))!= SQLITE_DONE){
+        if (rc != SQLITE_DONE){
             fprintf(stderr, "521: SQL error: %s\n", sqlite3_errmsg(db));
             sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
             sqlite3_finalize(stmt);
