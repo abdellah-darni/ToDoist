@@ -695,7 +695,7 @@ void show_task_details(WINDOW *win, Task *t) {
     mvwhline(win, 2, 1, ACS_HLINE, ((src_width-SIDE_BAR_WIDTH)/2)-2);
     mvwaddch(win, 2, ((src_width-SIDE_BAR_WIDTH)/2)-1, ACS_RTEE);
 
-    mvwprintw(win, 3, 2, "ID:   %d", t->id);
+    mvwprintw(win, 3, 2, "ID:   %s", t->id);
     mvwprintw(win, 4, 2, "Title: %s", t->title);
     print_in_middle(win, 1,0,(src_width-SIDE_BAR_WIDTH)/2, t->title);
     mvwprintw(win, 5, 2, "Desc:  %s", t->desc);

@@ -748,6 +748,8 @@ int delete_tag(sqlite3 *db, const char *tag){
 }
 
 
+
+//TODO: !!!! THE UUID GET SAVED IN CHINESE, needs investagation as solving the problem  摤㠷慣昶〭㌷ⴶ㜴挳㤭㐱ⵥㄴ㥢ㄴ愴〸扣
 // TODO: add isDeleted column in the task table and the tag table 
 // TODO: change delete an entry to mark isDeleted as True and not deleting the actual entry
 // TODO: when deleting a tag associated with tasks a prompt should apear and ask if we want to delete the tasks or chnage them to the defoults tag
