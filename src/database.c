@@ -29,15 +29,19 @@ int db_init_schema(sqlite3* db){
         "status INTEGER DEFAULT 0,"
         "due_date INTEGER,"
         "created_at INTEGER DEFAULT (unixepoch()),"
-        "updated_at INTEGER DEFAULT (unixepoch())"
+        "updated_at INTEGER DEFAULT (unixepoch()),"
+        "is_deleted INTEGER DEFAULT 0"
       ");",
       "CREATE TABLE IF NOT EXISTS tags ("
         "id TEXT PRIMARY KEY,"
-        "name TEXT NOT NULL UNIQUE"
+        "name TEXT NOT NULL UNIQUE,"
+        "is_deleted INTEGER DEFAULT 0"
       ");",
       "CREATE TABLE IF NOT EXISTS task_tags ("
         "task_id TEXT NOT NULL,"
         "tag_id  TEXT NOT NULL,"
+        "updated_at INTEGER DEFAULT (unixepoch()),"
+        "is_deleted INTEGER DEFAULT 0,"
         "PRIMARY KEY (task_id, tag_id),"
         "FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,"
         "FOREIGN KEY (tag_id)  REFERENCES tags(id)  ON DELETE CASCADE"
@@ -160,7 +164,8 @@ int load_tasks_fillterd(sqlite3 *db, MenuData *data, const char *where_clause){
                                 "FROM tasks AS t "
                                 "LEFT JOIN task_tags AS tt ON tt.task_id = t.id "
                                 "LEFT JOIN tags AS tg ON tg.id = tt.tag_id "
-                                "WHERE %s ;", where_clause);
+                                "WHERE t.is_deleted = 0 AND tt.is_deleted = 0 AND tg.is_deleted = 0 "
+                                "AND %s", where_clause);
 
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK) {
@@ -214,7 +219,8 @@ int load_tasks_fillterd(sqlite3 *db, MenuData *data, const char *where_clause){
                                 "  FROM tasks AS t "
                                 "  LEFT JOIN task_tags AS tt ON tt.task_id = t.id "
                                 "  LEFT JOIN tags AS tg ON tg.id = tt.tag_id "
-                                "  WHERE %s "
+                                "  WHERE t.is_deleted = 0 "
+                                "  AND %s "
                                 "  GROUP BY t.id;", where_clause);
     
     rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
@@ -606,7 +612,7 @@ int update_task(sqlite3 *db, Task *task){
     stmt = NULL;
     
     // delete the task-tag assocation
-    const char *del_tag_sql = "DELETE FROM task_tags WHERE task_id = ?;";
+    const char *del_tag_sql = "UPDATE task_tags SET is_deleted = 1 WHERE task_id = ?;";
     rc = sqlite3_prepare_v2(db, del_tag_sql, -1, &stmt, NULL);
     if (rc != SQLITE_OK){goto rollback;}
     sqlite3_bind_text(stmt, 1, task->id, -1, SQLITE_TRANSIENT);
@@ -671,7 +677,7 @@ int delete_task(sqlite3 *db, Task *task){
         return 0;
     }
 
-    const char *sql = "DELETE FROM tasks WHERE id = ?;";
+    const char *sql = "UPDATE tasks SET is_deleted = 1 WHERE id = ?;";
 
     sqlite3_stmt *stmt = NULL;
 
@@ -730,7 +736,7 @@ int delete_tag(sqlite3 *db, const char *tag){
         return 0;
     }
 
-    const char *sql = "DELETE FROM tags WHERE name = ?;";
+    const char *sql = "UPDATE tags SET is_deleted = 1 WHERE name = ?;";
 
     sqlite3_stmt *stmt = NULL;
 
@@ -746,10 +752,3 @@ int delete_tag(sqlite3 *db, const char *tag){
     sqlite3_finalize(stmt);
     return (rc == SQLITE_DONE);
 }
-
-
-
-//TODO: !!!! THE UUID GET SAVED IN CHINESE, needs investagation as solving the problem  摤㠷慣昶〭㌷ⴶ㜴挳㤭㐱ⵥㄴ㥢ㄴ愴〸扣
-// TODO: add isDeleted column in the task table and the tag table 
-// TODO: change delete an entry to mark isDeleted as True and not deleting the actual entry
-// TODO: when deleting a tag associated with tasks a prompt should apear and ask if we want to delete the tasks or chnage them to the defoults tag
