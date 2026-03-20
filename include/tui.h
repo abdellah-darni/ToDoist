@@ -63,6 +63,8 @@ typedef struct _AppState{
     WINDOW *top_bar_win;
     PANEL *details_panel;
     WINDOW *details_win;
+    PANEL *help_panel;
+    WINDOW *help_win;
 } AppState;
 
 void init_app_state(sqlite3 *db);
@@ -111,7 +113,7 @@ void show_edit_task_form(sqlite3 *db, Task *task);
 void handle_add_tag();
 void handle_delete_tag();
 
-
-
 void show_feedback_message(const char *title, const char *message, int is_error);
+
+void show_help_win(void);
 #endif

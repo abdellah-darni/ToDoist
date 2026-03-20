@@ -60,7 +60,7 @@ void init_tui(sqlite3 *db){
     load_filters_data(filters_menu);
     register_menu(filters_menu);
 
-    FocusableMenu *tags_menu = creat_focusable_menu(MENU_TYPE_TAG, "Tags", src_height - 13, SIDE_BAR_WIDTH, 13, 0);
+    FocusableMenu *tags_menu = creat_focusable_menu(MENU_TYPE_TAG, "Tags", src_height - 13 - 3, SIDE_BAR_WIDTH, 13, 0);
     load_tags_data(tags_menu);
     register_menu(tags_menu);
 
@@ -69,6 +69,10 @@ void init_tui(sqlite3 *db){
     FocusableMenu *tasks_menu = creat_focusable_menu(MENU_TYPE_TASK, "Tasks", window_height, window_width, 3, SIDE_BAR_WIDTH);
     load_tasks_data(tasks_menu, "1=1");
     register_menu(tasks_menu);
+
+    app_state.help_win = create_newwin(3, SIDE_BAR_WIDTH, src_height - 3, 0);
+    app_state.help_panel = new_panel(app_state.help_win);
+    mvwprintw(app_state.help_win, 1, 2, "[h] Help");
 
     int x_pos = SIDE_BAR_WIDTH + window_width;
     app_state.details_win = newwin(window_height, window_width, 3, x_pos);
@@ -157,6 +161,10 @@ void init_tui(sqlite3 *db){
                 }
                 break;
             }
+            case 'h':
+            case 'H':
+                show_help_win();
+                break;
             case 'q':{
                 cleanup_app_state();
                 endwin();
@@ -1753,7 +1761,6 @@ exit:
     return;
 }
 
-
 void show_feedback_message(const char *title, const char *message, int is_error) {
     int height = 5;
     int width = 40;
@@ -1786,6 +1793,47 @@ void show_feedback_message(const char *title, const char *message, int is_error)
     del_panel(msg_panel);
     delwin(msg_win);
     
+    update_panels();
+    doupdate();
+}
+
+void show_help_win(void) {
+    int height = 12;
+    int width = 45;
+    int start_y = (src_height - height) / 2;
+    int start_x = (src_width - width) / 2;
+    char *win_title = " Help ";
+
+    WINDOW *help_popup_win = newwin(height, width, start_y, start_x);
+
+    box(help_popup_win, 0 , 0);
+
+    wattron(help_popup_win, A_BOLD);
+    mvwprintw(help_popup_win, 0, (width - strlen(win_title)) / 2, " %s ", win_title);
+    wattroff(help_popup_win, A_BOLD);
+
+    mvwprintw(help_popup_win, 2, 2, "TAB   : Switch focus between panels");
+    mvwprintw(help_popup_win, 3, 2, "↑ / ↓ : Navigate lists");
+    mvwprintw(help_popup_win, 4, 2, "ENTER : Select item / Apply filter");
+    mvwprintw(help_popup_win, 5, 2, "a / A : Add new Task/Tag");
+    mvwprintw(help_popup_win, 6, 2, "e / E : Edit selected Task");
+    mvwprintw(help_popup_win, 7, 2, "c / C : Toggle Task status");
+    mvwprintw(help_popup_win, 8, 2, "d / D : Delete selected Task/Tag");
+    mvwprintw(help_popup_win, 9, 2, "q / Q : Quit application");
+
+    mvwprintw(help_popup_win, 11, (width - 24) / 2, " Press any key to close ");
+
+    PANEL *help_popup_panel = new_panel(help_popup_win);
+    top_panel(help_popup_panel);
+    update_panels();
+    doupdate();
+
+    wgetch(help_popup_win);
+
+    hide_panel(help_popup_panel);
+    del_panel(help_popup_panel);
+    delwin(help_popup_win);
+
     update_panels();
     doupdate();
 }
