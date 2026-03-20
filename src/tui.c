@@ -379,7 +379,7 @@ void load_tasks_data(FocusableMenu *menu, const char *filter){
             set_menu_sub(menu->menu, menu->subwin);
         }
 
-        set_menu_format(menu->menu, 45, 1);
+        set_menu_format(menu->menu, menu->height - 6, 1);
         set_menu_mark(menu->menu, " * ");
 
         post_menu(menu->menu);
