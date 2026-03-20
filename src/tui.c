@@ -100,7 +100,7 @@ void init_tui(sqlite3 *db){
         switch (c)
         {   
             case KEY_RESIZE:
-                printf("resize");
+                handle_resize();
                 break;
             case 9:{
                 switch_focus_to_next();
@@ -656,11 +656,10 @@ WINDOW *create_newwin(int src_height, int src_width, int starty, int startx){
 void update_time_top_bar(WINDOW *win, int y_pos, int src_width){
     time_t now = time(NULL);
     char time_str[64];
-    clrtoeol();
+    wclear(win);
     strftime(time_str,sizeof(time_str),"%a %d %b %H:%M",localtime(&now));
     wattron(win,A_ITALIC | A_BOLD);
-    wmove(win,y_pos,(src_width - strlen(time_str))/2);
-    wprintw(win,"%s",time_str);
+    mvwprintw(win, y_pos, (src_width - strlen(time_str))/2, time_str);
     wattroff(win,A_ITALIC | A_BOLD);
     box(win, 0,0);
     wrefresh(win);
@@ -1844,5 +1843,51 @@ void show_help_win(void) {
 }
 
 void handle_resize(void){
+    int min_height = 27;
+    int min_width = 70;
+
+    endwin();
+    refresh();
+    clear();
+
+    getmaxyx(stdscr, src_height, src_width);
+
+    while (src_height < min_height || src_width < min_width){
+        erase();
+
+        char display_text[120];
+
+        snprintf(display_text, sizeof(display_text), 
+                 "Terminal too small! Minimum: %d x %d, Current: %d x %d", 
+                 min_height, min_width, src_height, src_width);
+
+        mvprintw(src_height / 2, (src_width - strlen(display_text)) / 2, "%s", display_text);
+        refresh();
+
+        nodelay(stdscr, FALSE);
+        int ch = wgetch(stdscr);
+        nodelay(stdscr, TRUE);
+        // TODO: why did i use nodelay ?? check why and if not needed disabled it.
+        if (ch == KEY_RESIZE){
+            endwin();
+            refresh();
+            clear();
+            getmaxyx(stdscr, src_height, src_width);
+        }
+    }
+
+    int window_height = src_height - 3;
+    int window_width = (src_width - SIDE_BAR_WIDTH) / 2;
+    int det_width = (src_width - SIDE_BAR_WIDTH) - window_width;
+
+    wresize(app_state.help_win, 3, SIDE_BAR_WIDTH);
+    mvwin(app_state.help_win, src_height - 3, 0);
+
+    // wresize(app_state)
+
+    refrech_all_views();
+
+    update_panels();
+    doupdate();
 
 }
