@@ -64,8 +64,12 @@ void init_tui(sqlite3 *db){
     load_tags_data(tags_menu);
     register_menu(tags_menu);
 
+    int is_narrow = (src_width < 100);
+
     int window_height = src_height - 3;
-    int window_width = (src_width - SIDE_BAR_WIDTH) / 2;
+    int window_width = is_narrow ? (src_width - SIDE_BAR_WIDTH) : (src_width - SIDE_BAR_WIDTH) / 2;
+    int det_width = (src_width - SIDE_BAR_WIDTH) - window_width;
+
     FocusableMenu *tasks_menu = creat_focusable_menu(MENU_TYPE_TASK, "Tasks", window_height, window_width, 3, SIDE_BAR_WIDTH);
     load_tasks_data(tasks_menu, "1=1");
     register_menu(tasks_menu);
@@ -74,14 +78,18 @@ void init_tui(sqlite3 *db){
     app_state.help_panel = new_panel(app_state.help_win);
     mvwprintw(app_state.help_win, 1, 2, "[h] Help");
 
+    
+
     int x_pos = SIDE_BAR_WIDTH + window_width;
-    app_state.details_win = newwin(window_height, window_width, 3, x_pos);
+    app_state.details_win = newwin(window_height, det_width, 3, x_pos);
     app_state.details_panel = new_panel(app_state.details_win);
 
     print_in_middle(app_state.details_win, 1, 0, window_width, "Details");
     mvwaddch(app_state.details_win, 2, 0, ACS_LTEE);
     mvwhline(app_state.details_win, 2, 1, ACS_HLINE, window_width - 2);
     mvwaddch(app_state.details_win, 2, window_width - 1, ACS_RTEE);
+
+    if (is_narrow) hide_panel(app_state.details_panel);
 
     app_state.menus[0]->is_focused = 1;
     update_menu_highlighting();
