@@ -1883,11 +1883,43 @@ void handle_resize(void){
     wresize(app_state.help_win, 3, SIDE_BAR_WIDTH);
     mvwin(app_state.help_win, src_height - 3, 0);
 
-    // wresize(app_state)
+    for (int i = 0; i < app_state.menu_count; i++){
+        FocusableMenu *fm = app_state.menus[i]; 
 
+        if (fm->type != MENU_TYPE_FILTER){//
+        if (fm->menu) unpost_menu(fm->menu);
+        if (fm->subwin){
+            delwin(fm->subwin);
+            fm->subwin = NULL;
+        }
+
+
+        if (fm->type == MENU_TYPE_TAG){
+            fm->height = src_height - 13 - 3;
+        } else if (fm->type == MENU_TYPE_TASK){
+            fm->height = window_height;
+            fm->width = window_width;
+        }
+
+        wresize(fm->win, fm->height, fm->width);
+
+        if (fm->menu){
+            if (fm->type == MENU_TYPE_TAG){
+                fm->subwin = derwin(fm->win, fm->height - 4, fm->width - 4, 4, 2);
+                set_menu_format(fm->menu, fm->height - 4, 1);
+            } else if (fm->type == MENU_TYPE_TASK){
+                fm->subwin = derwin(fm->win, fm->height - 6, fm->width - 4, 4, 2);
+                set_menu_format(fm->menu, fm->height - 6, 1);
+            }
+            set_menu_sub(fm->menu, fm->subwin);
+            post_menu(fm->menu);
+        }
+    }//
+    }
+
+    wresize(app_state.details_win, window_height, det_width);
+    mvwin(app_state.details_win, 3, SIDE_BAR_WIDTH + window_width);
+
+    update_task_details();
     refrech_all_views();
-
-    update_panels();
-    doupdate();
-
 }
