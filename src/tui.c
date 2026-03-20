@@ -98,7 +98,10 @@ void init_tui(sqlite3 *db){
         c = wgetch(current_menu -> win);
 
         switch (c)
-        {
+        {   
+            case KEY_RESIZE:
+                printf("resize");
+                break;
             case 9:{
                 switch_focus_to_next();
                 continue;
@@ -635,6 +638,8 @@ void cleanup_app_state(){
     if (app_state.details_win) delwin(app_state.details_win);
     if (app_state.top_bar_panel) del_panel(app_state.top_bar_panel);
     if (app_state.top_bar_win) delwin(app_state.top_bar_win);
+    if (app_state.help_panel) del_panel(app_state.help_panel);
+    if(app_state.help_win) delwin(app_state.help_win);
 }
 
 WINDOW *create_newwin(int src_height, int src_width, int starty, int startx){
@@ -1836,4 +1841,8 @@ void show_help_win(void) {
 
     update_panels();
     doupdate();
+}
+
+void handle_resize(void){
+
 }
