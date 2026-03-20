@@ -1876,9 +1876,19 @@ void handle_resize(void){
         }
     }
 
+    int is_narrow = (src_width < 100);
+
     int window_height = src_height - 3;
-    int window_width = (src_width - SIDE_BAR_WIDTH) / 2;
+    int window_width = is_narrow ? (src_width - SIDE_BAR_WIDTH) : (src_width - SIDE_BAR_WIDTH) / 2;
     int det_width = (src_width - SIDE_BAR_WIDTH) - window_width;
+
+    if (is_narrow){
+        hide_panel(app_state.details_panel);
+    } else {
+        show_panel(app_state.details_panel);
+        wresize(app_state.details_win, window_height, det_width);
+        mvwin(app_state.details_win, 3, SIDE_BAR_WIDTH + window_width);
+    }
 
     wresize(app_state.help_win, 3, SIDE_BAR_WIDTH);
     mvwin(app_state.help_win, src_height - 3, 0);
@@ -1902,6 +1912,7 @@ void handle_resize(void){
             }
 
             wresize(fm->win, fm->height, fm->width);
+            mvwin(fm->win, fm->starty, fm->startx);
 
             if (fm->menu){
                 if (fm->type == MENU_TYPE_TAG){
@@ -1915,11 +1926,8 @@ void handle_resize(void){
                 set_menu_sub(fm->menu, fm->subwin);
                 post_menu(fm->menu);
             }
-        } //
+        }
     }
-
-    wresize(app_state.details_win, window_height, det_width);
-    mvwin(app_state.details_win, 3, SIDE_BAR_WIDTH + window_width);
 
     update_task_details();
     refrech_all_views();
