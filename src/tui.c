@@ -329,7 +329,7 @@ void load_tags_data(FocusableMenu *menu){
             set_menu_sub(menu->menu, menu->subwin);
         }
 
-        set_menu_format(menu->menu, 35, 1);
+        set_menu_format(menu->menu, menu->height - 5, 1);
         set_menu_mark(menu->menu, " * ");
 
         post_menu(menu->menu);
@@ -1917,7 +1917,7 @@ void handle_resize(void){
             if (fm->menu){
                 if (fm->type == MENU_TYPE_TAG){
                     fm->subwin = derwin(fm->win, fm->height - 4, fm->width - 4, 4, 2);
-                    set_menu_format(fm->menu, fm->height - 4, 1);
+                    set_menu_format(fm->menu, fm->height - 5, 1);
                 } 
                 else if (fm->type == MENU_TYPE_TASK){
                     fm->subwin = derwin(fm->win, fm->height - 6, fm->width - 4, 4, 2);
