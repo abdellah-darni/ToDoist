@@ -132,6 +132,8 @@ void init_tui(sqlite3 *db){
                     handle_filter_selection();
                 } else if (current_menu->type == MENU_TYPE_TAG){
                     handle_tag_selection();
+                } else if (current_menu->type == MENU_TYPE_TASK && src_width < 100){
+                    show_task_details_modal((Task *)item_userptr((ITEM *)current_item(current_menu->menu)));
                 }
                 pos_menu_cursor(current_menu -> menu);
                 break;
@@ -1931,4 +1933,60 @@ void handle_resize(void){
 
     update_task_details();
     refrech_all_views();
+}
+
+void show_task_details_modal(Task *t){
+    if (!t) return;
+
+    printf("trigerd\n");
+
+    int height = 15;
+    int width = 60;
+    int start_y = (src_height - height) / 2;
+    int start_x = (src_width - width) / 2;
+
+    WINDOW *modal = newwin(height, width, start_y, start_x);
+    box(modal, 0, 0);
+
+    wattron(modal, A_BOLD);
+    mvwprintw(modal, 1, 2, "Task Details");
+    wattroff(modal, A_BOLD);
+
+    mvwaddch(modal, 2, 0, ACS_LTEE);
+    mvwhline(modal, 2, 1, ACS_HLINE, width - 2);
+    mvwaddch(modal, 2, width - 1, ACS_RTEE);
+
+    mvwprintw(modal, 4, 2, "Title: %s", t->title);
+    mvwprintw(modal, 5, 2, "Desception: %s", t->desc);
+    mvwprintw(modal, 6, 2, "Status: %s", t->status ? "Completed" : "Pending");
+    mvwprintw(modal, 7, 2, "Tag: %s", t->tag);
+
+    char date_bf[64];
+    time_t created_at = (time_t)t->created_at;
+    strftime(date_bf, sizeof(date_bf), "%H:%M %d/%m%/%Y", localtime(&created_at));
+
+    mvwprintw(modal, 8, 2, "Created: %s", date_bf);
+
+    if(t->due_date){
+        time_t dd = (time_t)t->due_date;
+        strftime(date_bf, sizeof(date_bf), "%H:%M %d/%m%/%Y", localtime(&dd));
+        mvwprintw(modal, 9, 2, "Due: %s", date_bf);
+    }
+
+    wattron(modal, A_DIM);
+    mvwprintw(modal, height - 2, (width - 24) / 2, "Press any key to close");
+    wattroff(modal, A_DIM);
+
+    PANEL *panel = new_panel(modal);
+    top_panel(panel);
+    update_panels();
+    doupdate();
+
+    wgetch(modal);
+
+    hide_panel(panel);
+    del_panel(panel);
+    delwin(modal);
+    update_panels();
+    doupdate();
 }

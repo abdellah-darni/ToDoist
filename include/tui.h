@@ -118,4 +118,6 @@ void show_feedback_message(const char *title, const char *message, int is_error)
 void show_help_win(void);
 
 void handle_resize(void);
+
+void show_task_details_modal(Task *t);
 #endif
