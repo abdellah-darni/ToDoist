@@ -13,7 +13,7 @@
 // } TaskStatus;
 
 typedef struct _task{
-    int id;
+    char* id;
     char *title;
     char *desc;
     int status;
@@ -67,6 +67,6 @@ int delete_task(sqlite3 *db, Task *task);
 // crud tags
 
 int insert_new_tag(sqlite3 *db, const char *new_tag);
-
+int delete_tag(sqlite3 *db, const char *tag);
 
 #endif

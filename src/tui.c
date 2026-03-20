@@ -60,24 +60,36 @@ void init_tui(sqlite3 *db){
     load_filters_data(filters_menu);
     register_menu(filters_menu);
 
-    FocusableMenu *tags_menu = creat_focusable_menu(MENU_TYPE_TAG, "Tags", src_height - 13, SIDE_BAR_WIDTH, 13, 0);
+    FocusableMenu *tags_menu = creat_focusable_menu(MENU_TYPE_TAG, "Tags", src_height - 13 - 3, SIDE_BAR_WIDTH, 13, 0);
     load_tags_data(tags_menu);
     register_menu(tags_menu);
 
+    int is_narrow = (src_width < 100);
+
     int window_height = src_height - 3;
-    int window_width = (src_width - SIDE_BAR_WIDTH) / 2;
+    int window_width = is_narrow ? (src_width - SIDE_BAR_WIDTH) : (src_width - SIDE_BAR_WIDTH) / 2;
+    int det_width = (src_width - SIDE_BAR_WIDTH) - window_width;
+
     FocusableMenu *tasks_menu = creat_focusable_menu(MENU_TYPE_TASK, "Tasks", window_height, window_width, 3, SIDE_BAR_WIDTH);
     load_tasks_data(tasks_menu, "1=1");
     register_menu(tasks_menu);
 
+    app_state.help_win = create_newwin(3, SIDE_BAR_WIDTH, src_height - 3, 0);
+    app_state.help_panel = new_panel(app_state.help_win);
+    mvwprintw(app_state.help_win, 1, 2, "[h] Help");
+
+    
+
     int x_pos = SIDE_BAR_WIDTH + window_width;
-    app_state.details_win = newwin(window_height, window_width, 3, x_pos);
+    app_state.details_win = newwin(window_height, det_width, 3, x_pos);
     app_state.details_panel = new_panel(app_state.details_win);
 
     print_in_middle(app_state.details_win, 1, 0, window_width, "Details");
     mvwaddch(app_state.details_win, 2, 0, ACS_LTEE);
     mvwhline(app_state.details_win, 2, 1, ACS_HLINE, window_width - 2);
     mvwaddch(app_state.details_win, 2, window_width - 1, ACS_RTEE);
+
+    if (is_narrow) hide_panel(app_state.details_panel);
 
     app_state.menus[0]->is_focused = 1;
     update_menu_highlighting();
@@ -94,7 +106,10 @@ void init_tui(sqlite3 *db){
         c = wgetch(current_menu -> win);
 
         switch (c)
-        {
+        {   
+            case KEY_RESIZE:
+                handle_resize();
+                break;
             case 9:{
                 switch_focus_to_next();
                 continue;
@@ -125,6 +140,8 @@ void init_tui(sqlite3 *db){
                     handle_filter_selection();
                 } else if (current_menu->type == MENU_TYPE_TAG){
                     handle_tag_selection();
+                } else if (current_menu->type == MENU_TYPE_TASK && src_width < 100){
+                    show_task_details_modal((Task *)item_userptr((ITEM *)current_item(current_menu->menu)));
                 }
                 pos_menu_cursor(current_menu -> menu);
                 break;
@@ -150,9 +167,17 @@ void init_tui(sqlite3 *db){
             }
             case 'd':
             case 'D':{
-                handle_delete_task();
+                if (current_menu->type == MENU_TYPE_TASK){
+                    handle_delete_task();
+                } else if (current_menu->type == MENU_TYPE_TAG){
+                    handle_delete_tag();
+                }
                 break;
             }
+            case 'h':
+            case 'H':
+                show_help_win();
+                break;
             case 'q':{
                 cleanup_app_state();
                 endwin();
@@ -314,7 +339,7 @@ void load_tags_data(FocusableMenu *menu){
             set_menu_sub(menu->menu, menu->subwin);
         }
 
-        set_menu_format(menu->menu, 35, 1);
+        set_menu_format(menu->menu, menu->height - 5, 1);
         set_menu_mark(menu->menu, " * ");
 
         post_menu(menu->menu);
@@ -364,7 +389,7 @@ void load_tasks_data(FocusableMenu *menu, const char *filter){
             set_menu_sub(menu->menu, menu->subwin);
         }
 
-        set_menu_format(menu->menu, 45, 1);
+        set_menu_format(menu->menu, menu->height - 6, 1);
         set_menu_mark(menu->menu, " * ");
 
         post_menu(menu->menu);
@@ -623,6 +648,8 @@ void cleanup_app_state(){
     if (app_state.details_win) delwin(app_state.details_win);
     if (app_state.top_bar_panel) del_panel(app_state.top_bar_panel);
     if (app_state.top_bar_win) delwin(app_state.top_bar_win);
+    if (app_state.help_panel) del_panel(app_state.help_panel);
+    if(app_state.help_win) delwin(app_state.help_win);
 }
 
 WINDOW *create_newwin(int src_height, int src_width, int starty, int startx){
@@ -639,11 +666,10 @@ WINDOW *create_newwin(int src_height, int src_width, int starty, int startx){
 void update_time_top_bar(WINDOW *win, int y_pos, int src_width){
     time_t now = time(NULL);
     char time_str[64];
-    clrtoeol();
+    wclear(win);
     strftime(time_str,sizeof(time_str),"%a %d %b %H:%M",localtime(&now));
     wattron(win,A_ITALIC | A_BOLD);
-    wmove(win,y_pos,(src_width - strlen(time_str))/2);
-    wprintw(win,"%s",time_str);
+    mvwprintw(win, y_pos, (src_width - strlen(time_str))/2, time_str);
     wattroff(win,A_ITALIC | A_BOLD);
     box(win, 0,0);
     wrefresh(win);
@@ -691,7 +717,7 @@ void show_task_details(WINDOW *win, Task *t) {
     mvwhline(win, 2, 1, ACS_HLINE, ((src_width-SIDE_BAR_WIDTH)/2)-2);
     mvwaddch(win, 2, ((src_width-SIDE_BAR_WIDTH)/2)-1, ACS_RTEE);
 
-    mvwprintw(win, 3, 2, "ID:   %d", t->id);
+    mvwprintw(win, 3, 2, "ID:   %s", t->id);
     mvwprintw(win, 4, 2, "Title: %s", t->title);
     print_in_middle(win, 1,0,(src_width-SIDE_BAR_WIDTH)/2, t->title);
     mvwprintw(win, 5, 2, "Desc:  %s", t->desc);
@@ -1674,6 +1700,81 @@ void handle_add_tag(){
     }
 }
 
+void handle_delete_tag(){ // if the tags has tasks link to it i need to do a confiramation on top of the confiramtion 
+
+    FocusableMenu *tags_menu = get_focused_menu();
+    if (tags_menu->type != MENU_TYPE_TAG) return;
+
+    ITEM *current_tag = current_item(tags_menu->menu);
+    if(!current_tag) return;
+
+    const char *current_tag_name = item_name(current_tag);
+
+    // if (strcmp(current_tag_name, "None") == 0) return;
+
+    int height = 10;
+    int width = 50;
+    int start_y = (LINES - height) / 2;
+    int start_x = (COLS - width) / 2;
+
+    
+    WINDOW *confirmation_win = newwin(height, width, start_y, start_x);
+
+    box(confirmation_win, 0, 0);
+
+    const char *title = " Confirm Tag Deletion ";
+
+    mvwprintw(confirmation_win, 0, (width - strlen(title)) / 2, "%s", title);
+
+    mvwprintw(confirmation_win, 2, 2, "Tag: ");
+    wprintw(confirmation_win, "%.35s", current_tag_name); 
+    mvwprintw(confirmation_win, 4, 2, "Are sure you want to ");
+    wattron(confirmation_win, A_BOLD);
+    wprintw(confirmation_win, "delete");
+    wattroff(confirmation_win, A_BOLD);
+    wprintw(confirmation_win," this tag ?");
+
+    const char *help = "[ENTER] Confirm   [ESC] Cancel";
+    mvwprintw(confirmation_win, height - 2, (width - strlen(help)) / 2, "%s", help);
+
+    PANEL *conf_panel = new_panel(confirmation_win);
+    top_panel(conf_panel);
+    update_panels();
+    doupdate();
+
+    int ch;
+    
+    keypad(confirmation_win, TRUE);
+
+    while (1){
+
+        ch = wgetch(confirmation_win);
+
+        switch (ch)
+        {
+        case 10:
+            int error = delete_tag(app_state.db, current_tag_name);
+            const char *message = !error ? "Tag deleted." : "Deletion failed!";
+            mvwprintw(confirmation_win, height - 4, (width - strlen(message)) / 2, "%s", message);
+            wrefresh(confirmation_win);
+            napms(1000);
+            
+            refresh_tags_view();
+            goto exit;
+        case 27:
+            goto exit;
+        }
+    }
+
+exit:
+    hide_panel(conf_panel);
+    del_panel(conf_panel);
+    delwin(confirmation_win);
+    update_panels();
+    doupdate();
+    return;
+}
+
 void show_feedback_message(const char *title, const char *message, int is_error) {
     int height = 5;
     int width = 40;
@@ -1706,6 +1807,194 @@ void show_feedback_message(const char *title, const char *message, int is_error)
     del_panel(msg_panel);
     delwin(msg_win);
     
+    update_panels();
+    doupdate();
+}
+
+void show_help_win(void) {
+    int height = 12;
+    int width = 45;
+    int start_y = (src_height - height) / 2;
+    int start_x = (src_width - width) / 2;
+    char *win_title = " Help ";
+
+    WINDOW *help_popup_win = newwin(height, width, start_y, start_x);
+
+    box(help_popup_win, 0 , 0);
+
+    wattron(help_popup_win, A_BOLD);
+    mvwprintw(help_popup_win, 0, (width - strlen(win_title)) / 2, " %s ", win_title);
+    wattroff(help_popup_win, A_BOLD);
+
+    mvwprintw(help_popup_win, 2, 2, "TAB   : Switch focus between panels");
+    mvwprintw(help_popup_win, 3, 2, "↑ / ↓ : Navigate lists");
+    mvwprintw(help_popup_win, 4, 2, "ENTER : Select item / Apply filter");
+    mvwprintw(help_popup_win, 5, 2, "a / A : Add new Task/Tag");
+    mvwprintw(help_popup_win, 6, 2, "e / E : Edit selected Task");
+    mvwprintw(help_popup_win, 7, 2, "c / C : Toggle Task status");
+    mvwprintw(help_popup_win, 8, 2, "d / D : Delete selected Task/Tag");
+    mvwprintw(help_popup_win, 9, 2, "q / Q : Quit application");
+
+    mvwprintw(help_popup_win, 11, (width - 24) / 2, " Press any key to close ");
+
+    PANEL *help_popup_panel = new_panel(help_popup_win);
+    top_panel(help_popup_panel);
+    update_panels();
+    doupdate();
+
+    wgetch(help_popup_win);
+
+    hide_panel(help_popup_panel);
+    del_panel(help_popup_panel);
+    delwin(help_popup_win);
+
+    update_panels();
+    doupdate();
+}
+
+void handle_resize(void){
+    int min_height = 27;
+    int min_width = 70;
+
+    endwin();
+    refresh();
+    clear();
+
+    getmaxyx(stdscr, src_height, src_width);
+
+    while (src_height < min_height || src_width < min_width){
+        erase();
+
+        char display_text[120];
+
+        snprintf(display_text, sizeof(display_text),
+                 "Terminal too small! Minimum: %d x %d, Current: %d x %d",
+                 min_height, min_width, src_height, src_width);
+
+        mvprintw(src_height / 2, (src_width - strlen(display_text)) / 2, "%s", display_text);
+        refresh();
+
+        nodelay(stdscr, FALSE);
+        int ch = wgetch(stdscr);
+        nodelay(stdscr, TRUE);
+        // TODO: why did i use nodelay ?? check why and if not needed disabled it.
+        if (ch == KEY_RESIZE){
+            endwin();
+            refresh();
+            clear();
+            getmaxyx(stdscr, src_height, src_width);
+        }
+    }
+
+    int is_narrow = (src_width < 100);
+
+    int window_height = src_height - 3;
+    int window_width = is_narrow ? (src_width - SIDE_BAR_WIDTH) : (src_width - SIDE_BAR_WIDTH) / 2;
+    int det_width = (src_width - SIDE_BAR_WIDTH) - window_width;
+
+    if (is_narrow){
+        hide_panel(app_state.details_panel);
+    } else {
+        show_panel(app_state.details_panel);
+        wresize(app_state.details_win, window_height, det_width);
+        mvwin(app_state.details_win, 3, SIDE_BAR_WIDTH + window_width);
+    }
+
+    wresize(app_state.help_win, 3, SIDE_BAR_WIDTH);
+    mvwin(app_state.help_win, src_height - 3, 0);
+
+    for (int i = 0; i < app_state.menu_count; i++){
+        FocusableMenu *fm = app_state.menus[i];
+
+        if (fm->type != MENU_TYPE_FILTER){
+            if (fm->menu) unpost_menu(fm->menu);
+            if (fm->subwin){
+                delwin(fm->subwin);
+                fm->subwin = NULL;
+            }
+
+            if (fm->type == MENU_TYPE_TAG){
+                fm->height = src_height - 13 - 3;
+            }
+            else if (fm->type == MENU_TYPE_TASK){
+                fm->height = window_height;
+                fm->width = window_width;
+            }
+
+            wresize(fm->win, fm->height, fm->width);
+            mvwin(fm->win, fm->starty, fm->startx);
+
+            if (fm->menu){
+                if (fm->type == MENU_TYPE_TAG){
+                    fm->subwin = derwin(fm->win, fm->height - 4, fm->width - 4, 4, 2);
+                    set_menu_format(fm->menu, fm->height - 5, 1);
+                } 
+                else if (fm->type == MENU_TYPE_TASK){
+                    fm->subwin = derwin(fm->win, fm->height - 6, fm->width - 4, 4, 2);
+                    set_menu_format(fm->menu, fm->height - 6, 1);
+                }
+                set_menu_sub(fm->menu, fm->subwin);
+                post_menu(fm->menu);
+            }
+        }
+    }
+
+    update_task_details();
+    refrech_all_views();
+}
+
+void show_task_details_modal(Task *t){
+    if (!t) return;
+
+    printf("trigerd\n");
+
+    int height = 15;
+    int width = 60;
+    int start_y = (src_height - height) / 2;
+    int start_x = (src_width - width) / 2;
+
+    WINDOW *modal = newwin(height, width, start_y, start_x);
+    box(modal, 0, 0);
+
+    wattron(modal, A_BOLD);
+    mvwprintw(modal, 1, 2, "Task Details");
+    wattroff(modal, A_BOLD);
+
+    mvwaddch(modal, 2, 0, ACS_LTEE);
+    mvwhline(modal, 2, 1, ACS_HLINE, width - 2);
+    mvwaddch(modal, 2, width - 1, ACS_RTEE);
+
+    mvwprintw(modal, 4, 2, "Title: %s", t->title);
+    mvwprintw(modal, 5, 2, "Desception: %s", t->desc);
+    mvwprintw(modal, 6, 2, "Status: %s", t->status ? "Completed" : "Pending");
+    mvwprintw(modal, 7, 2, "Tag: %s", t->tag);
+
+    char date_bf[64];
+    time_t created_at = (time_t)t->created_at;
+    strftime(date_bf, sizeof(date_bf), "%H:%M %d/%m%/%Y", localtime(&created_at));
+
+    mvwprintw(modal, 8, 2, "Created: %s", date_bf);
+
+    if(t->due_date){
+        time_t dd = (time_t)t->due_date;
+        strftime(date_bf, sizeof(date_bf), "%H:%M %d/%m%/%Y", localtime(&dd));
+        mvwprintw(modal, 9, 2, "Due: %s", date_bf);
+    }
+
+    wattron(modal, A_DIM);
+    mvwprintw(modal, height - 2, (width - 24) / 2, "Press any key to close");
+    wattroff(modal, A_DIM);
+
+    PANEL *panel = new_panel(modal);
+    top_panel(panel);
+    update_panels();
+    doupdate();
+
+    wgetch(modal);
+
+    hide_panel(panel);
+    del_panel(panel);
+    delwin(modal);
     update_panels();
     doupdate();
 }
