@@ -17,10 +17,21 @@ DEPS := $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.d,$(SRCS))
 
 TARGET_PATH := $(BIN_DIR)/$(TARGET)
 
-COMMON_CFLAGS := -std=c11 -Wall -Wextra -I$(INCLUDE_DIR) -MMD -MP
+UNAME_S := $(shell uname -s)
 
-# Libraries
-LIBS := -lsqlite3 -lncurses -lmenu -lpanel -lform
+# Packages
+PKG_PACKAGES := sqlite3 ncurses menu panel form
+
+ifeq ($(UNAME_S),Darwin)
+    LIBS := $(shell pkg-config --libs $(PKG_PACKAGES) 2> /dev/null)
+    PKG_CFLAGS := $(shell pkg-config --cflags $(PKG_PACKAGES) 2> /dev/null)
+else
+    PKG_PACKAGES += uuid
+    LIBS := $(shell pkg-config --libs $(PKG_PACKAGES) 2> /dev/null)
+    PKG_CFLAGS := $(shell pkg-config --cflags $(PKG_PACKAGES) 2> /dev/null)
+endif
+
+COMMON_CFLAGS := -std=c11 -Wall -Wextra -I$(INCLUDE_DIR) $(PKG_CFLAGS) -MMD -MP
 
 # Build-type
 ifeq ($(DEBUG),1)
